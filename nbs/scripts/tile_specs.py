@@ -336,7 +336,7 @@ class TileInfo:
 
 
     def __repr__(self):
-        return f"TileInfo:{self.pb}_{self.utm}{self.hemi}_{self.tile}_{self.locality}"
+        return f"{self.__class__.__name__}:{self.pb}_{self.utm}{self.hemi}_{self.tile}_{self.locality}"
 
     def hash_id(self):
         """ Returns a hash of the tile info so it can be used as a dictionary key"""
@@ -657,6 +657,7 @@ class TileManager:
         self.max_tries = max_tries
         self.allow_res = allow_res
         self.user_dtypes, self.user_res = None, None
+        self.priority_modifiers = {}
         self.read_user_settings(self.allow_res)
         self.remaining_tiles = {}
         self.reconnect()
@@ -671,7 +672,11 @@ class TileManager:
 
     def read_user_settings(self, allow_res=False):
         try:
-            self.user_dtypes = [dt.strip() for dt in parse_multiple_values(self.config['dtypes'])]
+            self.user_dtypes = []
+            for dt in parse_multiple_values(self.config['dtypes']):
+                dt_name = dt.strip().replace("+", "").replace("-", "")
+                self.user_dtypes.append(dt_name)
+                self.priority_modifiers[dt_name] = dt.count("+") - dt.count("-")
         except KeyError:
             self.user_dtypes = None
         try:
@@ -711,11 +716,14 @@ class TileManager:
                     self.priorities[use_priority][tile.pb] = {hash: tile}
                 except KeyError:
                     self.priorities[use_priority] = {tile.pb: {hash: tile}}
-    @staticmethod
-    def _revised_priority(tile):
+
+    def _revised_priority(self, tile):
         use_priority = tile.priority if not tile.is_locked else TileManager.RUNNING_PRIORITY
         if use_priority is None:
             use_priority = 0
+        if use_priority != TileManager.RUNNING_PRIORITY:
+            if isinstance(tile, CombineTileInfo):
+                use_priority += self.priority_modifiers.get(tile.datatype, 0)
         return use_priority
 
     def pick_next_tile(self, currently_running):
@@ -902,7 +910,7 @@ def get_combine_records(config, needs_to_process=False, get_lock_status=True, ma
     -------
 
     """
-    dtypes = parse_multiple_values(config.get('dtypes', ""))
+    dtypes = parse_multiple_values(config.get('dtypes', "").replace("+", "").replace("-", ""))
     if sql_info is None:
         sql_obj = SQLConnectionAndCursor(config)
     else:

@@ -344,22 +344,32 @@ def main(config):
                     operation = "Combine" if isinstance(tile_info, CombineTileInfo) else "Export"
                     LOGGER.info(f"starting {operation} for {tile_info}" +
                                 f"\n  {len(tile_manager.remaining_tiles)} remain including the {len(tile_processes)} currently running")
+                    run_combine = False
+                    run_export = False
                     # CombineTileInfo is a subclass of ResolutionTileInfo so we have to check for the subclass first
-                    returned_process = None
-                    if isinstance(tile_info, CombineTileInfo):
-                        returned_process = combine_tile(tile_info, config, conn_info, debug_config=debug_config)
-                    elif isinstance(tile_info, ResolutionTileInfo):
+                    if isinstance(tile_info, CombineTileInfo):  # combine the tile
+                        run_combine = True
+                    elif isinstance(tile_info, ResolutionTileInfo):  # export the tile
                         combine_tiles = tile_info.get_related_combine_info(tile_manager.sql_obj)
-                        is_ready = True
+                        run_export = True
                         for tile in combine_tiles:
-                            if tile.combine.needs_processing():
-                                LOGGER.debug(f"Delaying export of {tile_info} because {tile} needs to combine first")
-                                is_ready = False
-                            if tile.is_locked:
-                                LOGGER.debug(f"Delaying export of {tile_info} because {tile} is locked")
-                                is_ready = False
-                        if is_ready:
-                            returned_process = export_tile(tile_info, config, tile_manager.sql_obj)
+                            if tile.combine.needs_processing() or tile.is_locked:
+                                run_export = False
+                                LOGGER.debug(f"Export of {tile_info} needs {tile} to combine first - trying to promote it")
+                                if tile.is_locked:
+                                    LOGGER.debug(f"Delaying export of {tile_info} because {tile} is locked")
+                                else:
+                                    if tile.hash_id() in tile_manager.remaining_tiles:
+                                        tile_info = tile
+                                        run_combine = True
+
+                    if run_combine:
+                        returned_process = combine_tile(tile_info, config, conn_info, debug_config=debug_config)
+                    elif run_export:
+                        returned_process = export_tile(tile_info, config, tile_manager.sql_obj)
+                    else:
+                        returned_process = None
+
                     if returned_process is not None:
                         tile_processes[tile_info.hash_id()] = returned_process
                 else:

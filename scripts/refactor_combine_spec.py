@@ -68,6 +68,10 @@ def fill_spec_tables_from_disk():
                                    (datetime.datetime(1970, 1, 1), export_time, t_id))
                     cursor.execute(f"""UPDATE spec_resolutions SET export_start_time=%s, export_end_time=%s, export_code=%s WHERE r_id=%s""",
                                    (export_time, export_time, export_code, r_id))
+                if datatype.lower() == 'enc':
+                    cursor.execute(f"""UPDATE spec_tiles SET enc_request_time=%s WHERE t_id=%s""",
+                                   (datetime.datetime(1970, 1, 1), t_id))
+
                 cursor.execute(f"""UPDATE view_individual_combines SET combine_start_time=%s, combine_end_time=%s, combine_code=%s, combine_data_location=%s,
                     combine_warnings_log=NULL, combine_info_log=NULL, combine_tries=1, combine_running=False 
                     WHERE c_id=%s""",
