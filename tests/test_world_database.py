@@ -1056,11 +1056,15 @@ def test_random_repeated_gdal_ops_multi_subtiles():
     tiles[0b1000] = db.db.get_tile_history_by_index(urx, ury)
 
     # check all contributors are in the data
-    def check_all_contribs(removed_contrib=None):
+    def check_all_contribs(removed_contribs=[]):
         for tile_bitflag, tile in tiles.items():
-            raster_data = tile[-1]
-            arr = raster_data.get_array(LayersEnum.ELEVATION)
-            tile_contribs = [int(x) for x in numpy.unique(arr) if not numpy.isnan(x)]
+            try:
+                raster_data = tile[-1]  # everything was removed
+            except IndexError:
+                tile_contribs = []
+            else:
+                arr = raster_data.get_array(LayersEnum.ELEVATION)
+                tile_contribs = [int(x) for x in numpy.unique(arr) if not numpy.isnan(x)]
             # make sure all expected contributors are in the data
             for contrib in all_contribs:
                 # If a contibutor has the bitflag in it then it should be in the data
@@ -1068,14 +1072,16 @@ def test_random_repeated_gdal_ops_multi_subtiles():
                 # finally recall that diagonals are not made so there is no contributor 10 (0b1010)
                 if contrib & tile_bitflag:
                     # if something was removed, make sure it isn't in the data
-                    if contrib is removed_contrib:
+                    if contrib in removed_contribs:
                         # placing the if then the assert so we can put a debug breakpoint
                         if contrib in tile_contribs:
                             assert contrib not in tile_contribs
+                            raise Exception(f"Contributor {contrib} was removed but is still in the data")
                     else:
                         # placing the if then the assert so we can put a debug breakpoint
                         if contrib not in tile_contribs:
                             assert contrib in tile_contribs
+                            raise Exception(f"Contributor {contrib} was missing in the data")
             # make sure there aren't extra contributors
             # If a contributor does not have the bitflag in it then it should not be in the data
             # So tile 5 (0b0101) should not be found in tiles[0b0010] (2)
@@ -1083,26 +1089,42 @@ def test_random_repeated_gdal_ops_multi_subtiles():
                 # placing the if then the assert so we can put a debug breakpoint
                 if not (contrib & tile_bitflag):
                     assert contrib & tile_bitflag
+                    raise Exception(f"Contributor {contrib} in the data but shouldn't be")
 
     # make sure the db is ok to start
     check_all_contribs()
     # remove and reinsert all contributors
     for n in range(1, 100):
-        if n <16:
-            remove_contrib = n
+        if n < 16:
+            if n in all_contribs:
+                remove_contribs = [n]
+            else:
+                continue
         else:
-            remove_contrib = random.choice(all_contribs)
-        print("Start loop", n, "removing", remove_contrib)
-        print("Removing", remove_contrib)
-        gdal_filename = use_dir.joinpath(f"{remove_contrib}.tif")
-        if os.path.exists(gdal_filename):
-            db.remove_and_recompute(remove_contrib)
-            check_all_contribs(remove_contrib)
-            print("Reinserting", remove_contrib)
-            db.insert_survey_gdal(gdal_filename, survey_score=100+remove_contrib, contrib_id=remove_contrib)
-            check_all_contribs()
-            print("Done", n)
-        else:
-            print("Skipping (invalid contributor number)", remove_contrib)
-            
-        
+            num_remove = random.randint(1, len(all_contribs) - 1)
+            keep_contribs = all_contribs.copy()
+            remove_contribs = []
+            for i in range(num_remove):
+                contrib = random.choice(keep_contribs)
+                remove_contribs.append(contrib)
+                keep_contribs.remove(contrib)
+        # remove_contribs = [15, 4, 1, 5, 3, 10, 8, 12]
+        print("\n\n\nStart loop", n, "removing", remove_contribs)
+        db.remove_and_recompute(remove_contribs)
+        check_all_contribs(remove_contribs)
+        for contrib in remove_contribs:
+            gdal_filename = use_dir.joinpath(f"{contrib}.tif")
+            print("Reinserting", contrib)
+            db.insert_survey_gdal(gdal_filename, survey_score=100+contrib, contrib_id=contrib)
+        check_all_contribs()
+        print("Done", n)
+        # break
+
+if __name__ == "__main__":
+    test_random_repeated_gdal_ops_multi_subtiles()
+    # test_export_custom_scoring()
+    # test_remove_survey()
+    # test_fast_export()
+    # test_custom_scoring()
+    # test_insert_txt()
+    # test_insert_gdal
