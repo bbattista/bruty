@@ -22,7 +22,7 @@ from nbs.bruty.world_raster_database import WorldDatabase, use_locks, UTMTileBac
 from nbs.bruty.exceptions import BrutyFormatError, BrutyMissingScoreError, BrutyUnkownCRS, BrutyError
 from nbs.bruty.world_raster_database import LockNotAcquired, AreaLock, FileLock, BaseLockException, EXCLUSIVE, SHARED, NON_BLOCKING, SqlLock, NameLock, Lock, AdvisoryLock
 from nbs.bruty.utils import onerr, user_action, remove_file, QUIT, HELP
-from nbs.configs import get_logger, read_config, log_config, make_family_of_logs, show_logger_handlers, convert_to_logging_level
+from nbs.configs import get_logger, read_config, log_config, make_family_of_logs, show_logger_handlers, get_log_level
 from nbs.bruty.nbs_postgres import get_records, get_sorting_info, get_transform_metadata, ConnectionInfo, connect_params_from_config, SCORING_METADATA_COLUMNS, TRANSFORM_METADATA_COLUMNS
 from nbs.scripts.convert_csar import convert_csar_python
 from nbs.scripts.tile_specs import TileInfo, CombineTileInfo, ResolutionTileInfo, create_world_db, \
@@ -679,12 +679,8 @@ def make_parser():
                         default=False, help="ignore the for_navigation flag")
     parser.add_argument('-r', action='store_true', dest='crop',
                         default=False, help="crop data to tile extents to avoid error (for ENC data covering many zones)")
-    parser.add_argument("-g", "--logger_path", type=str, metavar='logger_path', default="",
-                        help="location to store logger messages")
     parser.add_argument("-f", "--fingerprint", type=str, metavar='fingerprint', default="",
                         help="fingerprint to store success/fail code with in sqlite db")
-    parser.add_argument("--log_level", type=str, metavar='log_level', default="INFO",
-                        help="logging level to save to disk")
 
 
     return parser
@@ -699,13 +695,12 @@ if __name__ == "__main__":
         ret = NOT_ENOUGH_ARGS
     proc_start = time.time()
     if args.bruty_path:
-        config_obj = read_config(args.config_path)
+        config_obj = read_config(args.config_path, log_files=True, log_prefix=f"_{args.combine_pk_id}", base_log_dirs=None, pid_log_dirs=['logs', 'combines'])
         config = config_obj['DEFAULT']
         conn_info = connect_params_from_config(config)
 
         use_locks(None)  # @TODO change all locks to use postgres
-
-        log_level = convert_to_logging_level(args.log_level)
+        log_level = get_log_level(config)
 
         if args.debug:
             setup_call_logger(args.bruty_path)  # in debug mode we want to see all the calls, otherwise this will be a no-op
@@ -714,10 +709,7 @@ if __name__ == "__main__":
                                 pathlib.Path(get_dbg_log_path()+"wdb_metadata.1start.sqlite"))
             except:
                pass
-        print("using log level", log_level)
-        if args.logger_path:
-            make_family_of_logs("nbs", args.logger_path, remove_other_file_loggers=False, log_level=log_level)
-            make_family_of_logs("nbs", args.logger_path + "_" + str(os.getpid()), remove_other_file_loggers=False, log_level=log_level)
+        LOGGER.debug(f"using log level {log_level}")
         try:
             tile_info = CombineTileInfo.get_full_records(conn_info, int(args.combine_pk_id))[0]
             conn_info.tablenames = [tile_info.metadata_table_name()]

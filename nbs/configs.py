@@ -185,7 +185,7 @@ def load_config(config_filename: Union[str, os.PathLike], base_config_path: Unio
 
 
 def iter_configs(config_filenames: Union[list, str, os.PathLike], log_files: bool = True, default_config_name: Union[str, os.PathLike] = "",
-                 base_config_path: Union[str, os.PathLike] = None):
+                 base_config_path: Union[str, os.PathLike] = None, log_prefix="", base_log_dirs=('logs',), pid_log_dirs=None, rotating=False):
     """ Read all the configs using configparser and optionally modified by a default config file and base_configs.
     A ConfigParser object is created.  Then the default_config_name is loaded, if applicable.
     Then loads all configs from the base_configs directory (local to the script) listed in the [DEFAULT] section 'additional_configs' entry.
@@ -242,7 +242,15 @@ def iter_configs(config_filenames: Union[list, str, os.PathLike], log_files: boo
         if log_files:
             # sets the parent logger to output to files
             log_level = get_log_level(config_file)
-            make_family_of_logs("nbs", os.path.join(config_path, 'logs', just_cfg_filename), log_level=log_level)
+            remove_others = True  # In case another config ran before this one remove the other file loggers
+            if base_log_dirs:
+                make_family_of_logs("nbs", os.path.join(config_path, *base_log_dirs, just_cfg_filename + log_prefix),
+                                    remove_other_file_loggers=remove_others, log_level=log_level, rotating=rotating)
+                remove_others = False  # only remove the other file loggers once per config
+            if pid_log_dirs:
+                make_family_of_logs("nbs", os.path.join(config_path, *pid_log_dirs, just_cfg_filename + log_prefix + "_" + str(os.getpid())),
+                                    remove_other_file_loggers=remove_others, log_level=log_level, rotating=rotating)
+                remove_others = False  # only remove the other file loggers once per config
         yield config_filename, config_file
 
 
@@ -262,10 +270,10 @@ def read_config(config_filename: str, **kwargs):
         return config
 
 
-def make_family_of_logs(name, root_filename, log_format=None, remove_other_file_loggers=True, weekly=True, log_level=logging.DEBUG):
+def make_family_of_logs(name, root_filename, log_format=None, remove_other_file_loggers=True, weekly=True, log_level=logging.DEBUG, rotating=False):
     added_handlers = []
     # sets the parent logger to output to files
-    if weekly:
+    if weekly and not rotating:
         # truncated division by weeks so that we start on the same day of week every time
         # result will be '2022-11-27'
         log_week = datetime.date.fromordinal((datetime.date.today().toordinal() // 7) * 7).isoformat()
@@ -273,19 +281,22 @@ def make_family_of_logs(name, root_filename, log_format=None, remove_other_file_
         weekly_path = orig_filename.parent.joinpath("logs_" + log_week)
         os.makedirs(weekly_path, exist_ok=True)
         root = weekly_path.joinpath(orig_filename.name)
+    else:
+        root = root_filename
     if log_level <= logging.DEBUG:
         h1 = set_file_logging(name, str(root) + ".debug.log", log_format=log_format,
-                         file_level=logging.DEBUG, remove_other_file_loggers=remove_other_file_loggers)
+                              file_level=logging.DEBUG, remove_other_file_loggers=remove_other_file_loggers, rotating=rotating)
         added_handlers.extend(h1)
     if log_level <= logging.INFO:
         h2 = set_file_logging(name, str(root) + ".log", log_format=log_format,
-                         file_level=logging.INFO, remove_other_file_loggers=False)
+                              file_level=logging.INFO, remove_other_file_loggers=False, rotating=rotating)
         added_handlers.extend(h2)
     if log_level <= logging.WARNING:
         h3 = set_file_logging(name, str(root) + ".warnings.log", log_format=log_format,
-                         file_level=logging.WARNING, remove_other_file_loggers=False)
+                              file_level=logging.WARNING, remove_other_file_loggers=False, rotating=rotating)
         added_handlers.extend(h3)
     return added_handlers
+
 
 def close_logs(logger, specific_handlers: list = None, show_open_logs: bool = False):
     """ Close the log files and remove the handlers from the logger.
@@ -429,7 +440,7 @@ def set_stream_logging(logger_name: str, file_level: int = None, log_format: str
 
 
 def set_file_logging(logger_name: str, log_file: Union[str, pathlib.Path, logging.StreamHandler] = None, file_level: int = None,
-                     log_format: str = None, remove_other_file_loggers: bool = True):
+                     log_format: str = None, remove_other_file_loggers: bool = True, rotating: bool = False):
     added_handlers = []
     logger = logging.getLogger(logger_name)
     logger.debug(f"{logger.name} saving to {log_file}")
@@ -439,7 +450,10 @@ def set_file_logging(logger_name: str, log_file: Union[str, pathlib.Path, loggin
                 logger.removeHandler(existing_file_handler)
     if log_file is not None:
         if isinstance(log_file, (str, pathlib.Path)):
-            file_handler = logging.FileHandler(log_file)
+            if rotating:
+                file_handler = logging.handlers.TimedRotatingFileHandler(log_file, when='W0', interval=1, backupCount=8)
+            else:
+                file_handler = logging.FileHandler(log_file)
         else:
             file_handler = log_file
         if file_level is None:
@@ -502,16 +516,13 @@ def get_log_level(config, def_level="WARNING", section="DEFAULT"):
     return convert_to_logging_level(config_level)
 
 
-def run_configs(func, title, use_configs, section="DEFAULT", logger=default_logger, log_suffix=""):
+def run_configs(func, title, use_configs, section="DEFAULT", logger=default_logger, log_suffix="", **kywds):
     """ use_configs as a string denotes a directory to search for all configs.
     use_configs as a list specifies config files to use.
     """
     all_warnings = []
 
-    for config_filename, config_file in iter_configs(use_configs):
-        log_level = get_log_level(config_file, section=section)
-        make_family_of_logs("nbs", config_filename.parent.joinpath("logs", config_filename.name + "_" + str(os.getpid()) + log_suffix),
-                            remove_other_file_loggers=False, log_level=log_level)
+    for config_filename, config_file in iter_configs(use_configs, **kywds):
         # @TODO expose the stringio_warnings to the caller
         stringio_warnings = set_stream_logging("bruty", file_level=logging.WARNING, remove_other_file_loggers=False)
         logger.info(f'***************************** Start {title}  *****************************')
@@ -525,14 +536,14 @@ def run_configs(func, title, use_configs, section="DEFAULT", logger=default_logg
     return all_warnings
 
 
-def run_command_line_configs(func, title="", section="DEFAULT", logger=default_logger, log_suffix=""):
+def run_command_line_configs(func, title="", section="DEFAULT", logger=default_logger, log_suffix="", **kywds):
     """ run configs specified on the command line (sys.argv) or search the directory where func is located (uses inspect module)
     """
     if len(sys.argv) > 1:
         use_configs = sys.argv[1:]
     else:
         use_configs = pathlib.Path(inspect.getfile(func)).parent.resolve()  # (os.path.dirname(os.path.abspath(__file__))
-    return run_configs(func, title, use_configs, section, logger, log_suffix=log_suffix)
+    return run_configs(func, title, use_configs, section, logger, log_suffix=log_suffix, **kywds)
 
 
 def show_logger_handlers(logger):

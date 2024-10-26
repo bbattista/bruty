@@ -37,7 +37,7 @@ from nbs.bruty.nbs_postgres import id_to_scoring, get_nbs_records, nbs_survey_so
 from nbs.bruty.nbs_postgres import REVIEWED, PREREVIEW, SENSITIVE, ENC, GMRT, INTERNAL, NAVIGATION, PUBLIC, SCORING_METADATA_COLUMNS, EXPORT_METADATA_COLUMNS
 from nbs.bruty.world_raster_database import WorldDatabase, use_locks, AdvisoryLock, BaseLockException
 from nbs.bruty.exceptions import BrutyFormatError, BrutyMissingScoreError, BrutyUnkownCRS, BrutyError
-from nbs.configs import get_logger
+from nbs.configs import get_logger, convert_to_logging_level, make_family_of_logs
 from nbs.bruty.nbs_locks import LockNotAcquired, AreaLock, FileLock, EXCLUSIVE, SHARED, NON_BLOCKING, SqlLock, NameLock, start_server, current_address
 from nbs.bruty.generalize import generalize, generalize_tile
 from nbs.bruty.raster_attribute_table import make_raster_attr_table
@@ -1496,14 +1496,15 @@ if __name__ == "__main__":
         ret = 1
 
     if args.config and args.res_tile_pk_id:
-        config_file = read_config(args.config)
+        config_file = read_config(args.config, log_files=True, log_prefix=f"_{args.res_tile_pk_id}", base_log_dirs=None, pid_log_dirs=['logs', 'exports'])
+        log_path = pathlib.Path(args.config)
         config = config_file['EXPORT']
         # use_locks(args.lock_server)
         conn_info = connect_params_from_config(config)
 
         tile_info = ResolutionTileInfo.from_table(conn_info, args.res_tile_pk_id)
         try:
-            LOGGER.debug(f"Processing {tile_info.full_name}")
+            LOGGER.info(f"Processing {tile_info.full_name}")
             ret = combine_and_export(config, tile_info, args.decimals, args.use_caches)
         except Exception as e:
             traceback.print_exc()

@@ -96,8 +96,8 @@ def launch_export(config_path, tile_info, use_caches=False,
 
 
 def launch_combine(root_path, view_pk_id, config_pth, use_navigation_flag=True, override_epsg=False, extra_debug=False,
-           exclude=None, crop=False, log_path=None, env_path=r'', env_name='', minimized=False,
-           fingerprint="", delete_existing=False, log_level=logging.INFO):
+           exclude=None, crop=False, env_path=r'', env_name='', minimized=False,
+           fingerprint="", delete_existing=False):
     """
 
     fingerprint is being used to find the processes that are running.
@@ -125,30 +125,27 @@ def launch_combine(root_path, view_pk_id, config_pth, use_navigation_flag=True, 
     if env_path:
         cmds.append(env_path + " " + env_name)  # activate the environment
     cmds.append(f'{env_var_cmd} PYTHONPATH={nbs_code}{separator}{bruty_code}')  # add the NBS and Bruty code to the python path
-    combine_args = ['python combine.py']
+    args = ['python combine.py']
     for exclusion in exclude:
-        combine_args.extend(['-x', exclusion])
-    combine_args.extend(["-k", str(view_pk_id)])
-    combine_args.extend(["-b", str(root_path)])
-    combine_args.extend(["-c", str(config_pth)])
+        args.extend(['-x', exclusion])
+    args.extend(["-k", str(view_pk_id)])
+    args.extend(["-b", str(root_path)])
+    args.extend(["-c", str(config_pth)])
     if not use_navigation_flag:  # not using the navigation flag
-        combine_args.append("-i")
-    combine_args.extend(['--log_level', str(log_level)])
+        args.append("-i")
     if crop:
-        combine_args.append('-r')
+        args.append('-r')
     if override_epsg:
-        combine_args.extend(["-e"])
+        args.extend(["-e"])
     if extra_debug:
-        combine_args.append("--debug")
+        args.append("--debug")
     if delete_existing:
-        combine_args.append("--delete")
-    if log_path:
-        combine_args.extend(["-g", log_path])
+        args.append("--delete")
     if fingerprint:
-        combine_args.extend(['-f', fingerprint])
-    # combine_args.extend(["-d", conn_info.database, "-r", str(conn_info.port), "-o", conn_info.hostname, "-u", conn_info.username,
+        args.extend(['-f', fingerprint])
+    # args.extend(["-d", conn_info.database, "-r", str(conn_info.port), "-o", conn_info.hostname, "-u", conn_info.username,
     #                      "-p", '"'+conn_info.password+'"'])
-    cmds.append(" ".join(combine_args))
+    cmds.append(" ".join(args))
     if platform.system() == 'Windows':
         cmds.append(f"exiter.bat {SUCCEEDED} {TILE_LOCKED}")  # exiter.bat closes the console if there was no error code, keeps it open if there was an error
         args = 'cmd.exe /K ' + "&".join(cmds)  # note && only joins commands if they succeed = "0", so just use one ampersand so we can use different return codes
@@ -201,7 +198,6 @@ def export_tile(tile_info, config, sql_info):
     env_path = config.get('environment_path')
     env_name = config.get('environment_name')
     minimized = config.getboolean('MINIMIZED', False)
-    # log_level = get_log_level(config)
 
     return_process = None
 
@@ -228,7 +224,6 @@ def combine_tile(tile_info, config, conn_info, debug_config=False, log_path=""):
     env_path = config.get('environment_path')
     env_name = config.get('environment_name')
     override = config.getboolean('override', False)
-    log_level = get_log_level(config)
     exclude = parse_multiple_values(config.get('exclude_ids', ''))
     delete_existing = config.getboolean('delete_existing_if_cleanup_needed', False)
     minimized = config.getboolean('MINIMIZED', False)
@@ -250,13 +245,13 @@ def combine_tile(tile_info, config, conn_info, debug_config=False, log_path=""):
         # NOTICE -- this function will not write to the combine_spec_view table with the status codes etc.
         ret = process_nbs_database(root_path, conn_info, tile_info, use_navigation_flag=use_nav_flag,
                                    extra_debug=debug_config, override_epsg=override, exclude=exclude, crop=(tile_info.datatype == ENC),
-                                   delete_existing=delete_existing, log_level=log_level)
+                                   delete_existing=delete_existing, log_level=get_log_level(config))
         errors = perform_qc_checks(tile_info, conn_info, (use_nav_flag, tile_info.for_nav), repair=True, check_last_insert=False)
     else:
         pid = launch_combine(root_path, tile_info.pk, config._source_filename, use_navigation_flag=use_nav_flag,
                              override_epsg=override, extra_debug=debug_config, exclude=exclude, crop=(tile_info.datatype == ENC),
                              log_path=log_path, env_path=env_path, env_name=env_name, minimized=minimized,
-                             fingerprint=fingerprint, delete_existing=delete_existing, log_level=log_level)
+                             fingerprint=fingerprint, delete_existing=delete_existing)
         running_process = ConsoleProcessTracker(["python", fingerprint, "combine.py"])
         if running_process.console.last_pid != pid:
             LOGGER.warning(f"Process ID mismatch {pid} did not match the found {running_process.console.last_pid}")
@@ -295,11 +290,9 @@ def main(config):
     max_tries = config.getint('max_retries', 3)
     conn_info = connect_params_from_config(config)
     root, cfg_name = os.path.split(config._source_filename)
-    log_path = os.path.join(root, "logs", cfg_name)
     if debug_config:
         show_logger_handlers(LOGGER)
     # use_nav_flag = True  # config.getboolean('use_for_navigation_flag', True)
-
     global debug_launch
     debug_launch = interactive_debug and debug_config and max_processes < 2
     # While user doesn't quit and have a setting for if stop when finished user config (server runs forever while user ends when no more tiles to combine)
@@ -309,6 +302,7 @@ def main(config):
     #   Run the highest priority tile
     tile_manager = TileManager(config, max_tries, allow_res=debug_config)
     tile_processes = {}
+
     try:
         tile_manager.refresh_tiles_list(needs_combining=True, needs_exporting=True)
         while is_service or tile_manager.remaining_tiles or tile_processes:  # run forever if a service, otherwise run until all tiles are combined
@@ -353,7 +347,7 @@ def main(config):
                     # CombineTileInfo is a subclass of ResolutionTileInfo so we have to check for the subclass first
                     returned_process = None
                     if isinstance(tile_info, CombineTileInfo):
-                        returned_process = combine_tile(tile_info, config, conn_info, debug_config=debug_config, log_path=log_path)
+                        returned_process = combine_tile(tile_info, config, conn_info, debug_config=debug_config)
                     elif isinstance(tile_info, ResolutionTileInfo):
                         combine_tiles = tile_info.get_related_combine_info(tile_manager.sql_obj)
                         is_ready = True
@@ -404,5 +398,5 @@ if __name__ == '__main__':
     #         LOGGER.debug(f.getvalue()[:-1])  # strip the newline at the end
 
     # Runs the main function for each config specified in sys.argv
-    run_command_line_configs(main, "Insert", section="COMBINE", log_suffix="_combine_tiles")
+    run_command_line_configs(main, "Insert", section="COMBINE", log_suffix="_combine_tiles", rotating=True)
 
