@@ -279,8 +279,10 @@ class TileInfo:
         return cls(**record)
 
     @classmethod
-    def check_locks(cls, sql_info, pk_vals):
-        """ Check the lock status of multiple records
+    def check_locks(cls, sql_info, pk_vals, with_locks=True):
+        """ WARNING -- DO NOT CALL USING with_locks AFTER ACQUIRE_LOCK() OR ALL ROWS GET LOCKED
+        Check the lock status of multiple records
+
         Parameters
         ----------
         conn_info
@@ -292,7 +294,8 @@ class TileInfo:
         -------
 
         """
-        records = cls._get_records(sql_info, pk_vals, f"{cls.PRIMARY_KEY}, {cls.LOCK_QUERY}", cls.JOINED_TABLE)
+        lock_expression = f", {cls.LOCK_QUERY}" if with_locks else ""
+        records = cls._get_records(sql_info, pk_vals, f"{cls.PRIMARY_KEY}{lock_expression}", cls.JOINED_TABLE)
         return records
 
     @classmethod
@@ -318,8 +321,10 @@ class TileInfo:
         return records
 
     @classmethod
-    def get_full_records(cls, sql_info, pk_vals):
-        """ Check the lock status of multiple records
+    def get_full_records(cls, sql_info, pk_vals, with_locks=True):
+        """ WARNING -- DO NOT CALL USING with_locks AFTER ACQUIRE_LOCK() OR ALL ROWS GET LOCKED
+        Check the lock status of multiple records
+
         Parameters
         ----------
         conn_info
@@ -331,9 +336,9 @@ class TileInfo:
         -------
 
         """
-        records = cls._get_records(sql_info, pk_vals, f"*, {cls.EPSG_QUERY}, {cls.LOCK_QUERY}", cls.JOINED_TABLE)
+        lock_expression = f", {cls.LOCK_QUERY}" if with_locks else ""
+        records = cls._get_records(sql_info, pk_vals, f"*, {cls.EPSG_QUERY}{lock_expression}", cls.JOINED_TABLE)
         return [cls(**record) for record in records]
-
 
     def __repr__(self):
         return f"{self.__class__.__name__}:{self.pb}_{self.utm}{self.hemi}_{self.tile}_{self.locality}"
@@ -465,7 +470,7 @@ class ResolutionTileInfo(TileInfo):
     def get_related_combine_info(self, sql_info):
         sql_obj = SQLConnectionAndCursor.from_info(sql_info)
         combine_ids = self.get_related_combine_ids(sql_obj)
-        combine_tiles = CombineTileInfo.get_full_records(sql_obj, combine_ids)
+        combine_tiles = CombineTileInfo.get_full_records(sql_obj, combine_ids, with_locks=not self.has_lock())
         return combine_tiles
 
     def get_related_combine_ids(self, sql_info):
