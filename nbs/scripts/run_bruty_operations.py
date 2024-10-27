@@ -374,12 +374,15 @@ def main(config):
                             if tile.combine.needs_processing() or tile.is_locked:
                                 run_export = False
                                 if tile.is_locked:
-                                    LOGGER.debug(f"Delaying export of {tile_info} because {tile} is locked")
+                                    LOGGER.info(f"Delaying export of {tile_info} because {tile} is locked")
                                 else:
-                                    LOGGER.debug(f"Export of {tile_info} needs {tile} to combine first - trying to promote it")
                                     if tile.hash_id() in tile_manager.remaining_tiles:
+                                        LOGGER.info(f"Export of {tile_info} needs {tile} to combine first - trying to promote it")
                                         tile_info = tile
                                         run_combine = True
+                                    else:
+                                        LOGGER.info(f"Export of {tile_info} needs {tile} but it is not in the list to combine (did it have combine failures?)")
+
 
                     if run_combine:
                         returned_process = combine_tile(tile_info, config, conn_info, debug_config=debug_config)
