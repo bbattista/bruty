@@ -267,7 +267,7 @@ def process_nbs_database(root_path, conn_info, tile_info, use_navigation_flag=Tr
                 db = create_world_db(p, tile_info, log_level=log_level)
                 override = db.db.epsg if override_epsg else NO_OVERRIDE
                 world_db_path = db.db.data_path
-                tile_info.combine.data_location = world_db_path
+                tile_info.combine.data_location = world_db_path.as_posix()
             except (sqlite3.OperationalError, OSError) as e:
                 # this happened as a network issue - we will skip it for now and come back and give the network some time to recover
                 # but we will count it as a retry in case there is a corrupted file or something
@@ -687,7 +687,7 @@ def make_parser():
 
 
 if __name__ == "__main__":
-    print(sys.argv)
+    LOGGER.info(str(sys.argv))
     parser = make_parser()
     args = parser.parse_args()
     if args.show_help or not args.bruty_path or not args.combine_pk_id or not args.config_path:
@@ -714,7 +714,7 @@ if __name__ == "__main__":
             tile_info = CombineTileInfo.get_full_records(conn_info, int(args.combine_pk_id))[0]
             conn_info.tablenames = [tile_info.metadata_table_name()]
             tile_info.acquire_lock(conn_info)
-            print(f"Processing {args.bruty_path} for_navigation_flag={(not args.ignore_for_nav, tile_info.for_nav)}")
+            LOGGER.info(f"Combining {tile_info} for_navigation_flag={(not args.ignore_for_nav, tile_info.for_nav)}")
             ret = process_nbs_database(args.bruty_path, conn_info, tile_info, use_navigation_flag=not args.ignore_for_nav,
                                        extra_debug=args.debug, override_epsg=args.override_epsg, exclude=args.exclude, crop=args.crop,
                                        delete_existing=args.delete_existing, log_level=log_level)

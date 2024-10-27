@@ -1504,7 +1504,7 @@ if __name__ == "__main__":
 
         tile_info = ResolutionTileInfo.from_table(conn_info, args.res_tile_pk_id)
         try:
-            LOGGER.info(f"Processing {tile_info.full_name}")
+            LOGGER.info(f"Exporting {tile_info}")
             ret = combine_and_export(config, tile_info, args.decimals, args.use_caches)
         except Exception as e:
             traceback.print_exc()
