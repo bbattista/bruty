@@ -54,63 +54,32 @@ print("\nremove the hack setting the bruty and nbs directories into the python p
 print("\nremove the hack setting the bruty and nbs directories into the python path\n")
 
 
-def launch_export(config_path, tile_info, use_caches=False,
-           env_path=r'D:\languages\miniconda3\Scripts\activate', env_name='NBS', profile_tile_id=(0, 0),
-           decimals=None, minimized=False, fingerprint=""):
+def start_process(args, env_path=r'', env_name='', minimized=False, always_exit=False):
+    """ Launch subprocess.Popen on Windows or Linux.
+    Sets the activates the given environment, sets the python path runs the given arguments and
+    on windows will optionally keep the console open on errors and start minimized
 
-    """ for_navigation_flag = (use_nav_flag, nav_flag_value)
+    Parameters
+    ----------
+    args
+    env_path
+        The activate command to call.  Used with env_name.
+    env_name
+        The environment name to activate.  Combined with env_path command.
+    minimized
+        Starts the console minimized on Windows
+    always_exit
+        False will keep the console open in case of errors on Windows only.  Linux always exits.
+
+    Returns
+    -------
+
     """
-    # FIXME this function is not cross platform but launch_combine is
-    # spawn a new console, activate a python environment and run the combine.py script with appropriate arguments
-    bruty_code = nbs.bruty.__path__._path[0]
-    bruty_root = str(pathlib.Path(bruty_code).parent.parent)
-    nbs_code = fuse_dev.__path__._path[0]
-    nbs_code = str(pathlib.Path(nbs_code).parent)
-    restore_dir = os.getcwd()
-    # os.chdir(pathlib.Path(__file__).parent.joinpath("..", "bruty"))  # change directory so we can run the tile_export script
-    # FIXME - hack overriding nbs and bruty paths
-    # looks like activate is overwriting the pythonpath, so specify it after the activate command
-    args = ['cmd.exe', '/K', 'set', f'pythonpath=&', 'set', 'TCL_LIBRARY=&', 'set',
-            'TIX_LIBRARY=&', 'set', 'TK_LIBRARY=&', env_path, env_name, '&',
-            'set', f'pythonpath={nbs_code};{bruty_root}&', 'python']
-    # if profiling:
-    #     args.extend(["-m", "cProfile", "-o", str(pathlib.Path(config_path).parent) + f"\\timing{tile_info.tile}_{tile_info.resolution}.profile"])
-    script_path = os.path.join(bruty_code, "tile_export.py")
-    args.extend([script_path, "-c", config_path, "-k", str(tile_info.pk)])
-    if decimals is not None:
-        args.extend(["-d", str(decimals)])
-    if fingerprint:
-        args.extend(['-f', fingerprint])
-    if use_caches:
-        args.append("-u")
-
-    # exiter closes the console if there was no error code, keeps it open if there was an error
-    args.extend(["&", r"..\scripts\exiter.bat", f"{SUCCEEDED}", f"{TILE_LOCKED}"])  # note && only joins commands if they succeed, so just use one ampersand
-    # because we are launching separate windows we can't use the subprocess.poll and returncode.
-    # maybe we should switch to just logs and not leave a window on the screen for the user to see
-    # that would make it easier to check the returncode
-    proc = subprocess.Popen(args, **popen_kwargs(activate=False, minimize=minimized))
-    # os.chdir(restore_dir)
-    ret = proc.pid, script_path
-    return ret
-
-
-def launch_combine(root_path, view_pk_id, config_pth, use_navigation_flag=True, override_epsg=False, extra_debug=False,
-           exclude=None, crop=False, env_path=r'', env_name='', minimized=False,
-           fingerprint="", delete_existing=False):
-    """
-
-    fingerprint is being used to find the processes that are running.
-    Because of launching cmd.exe there is no direct communication to the python process.
-    Supplying fingerprint will make both the cmd console and the python process easier to find using psutil.
-    """
-    # either launch in a new console with subprocess.popen or use multiprocessing.Process.  Could also consider dask.
-    # spawn a new console, activate a python environment and run the combine.py script with appropriate arguments
     restore_dir = os.getcwd()
     os.chdir(pathlib.Path(__file__).parent)
     # FIXME -- figure out and remove this hack
     bruty_code = nbs.bruty.__path__._path[0]
-    bruty_code = str(pathlib.Path(bruty_code).parent.parent)
+    bruty_root = str(pathlib.Path(bruty_code).parent.parent)
     nbs_code = fuse_dev.__path__._path[0]
     nbs_code = str(pathlib.Path(nbs_code).parent)
     if platform.system() == 'Windows':
@@ -124,7 +93,66 @@ def launch_combine(root_path, view_pk_id, config_pth, use_navigation_flag=True, 
     cmds = [f'{env_var_cmd} TCL_LIBRARY=', f'{env_var_cmd} TIX_LIBRARY=', f'{env_var_cmd} TK_LIBRARY=']
     if env_path:
         cmds.append(env_path + " " + env_name)  # activate the environment
-    cmds.append(f'{env_var_cmd} PYTHONPATH={nbs_code}{separator}{bruty_code}')  # add the NBS and Bruty code to the python path
+    cmds.append(f'{env_var_cmd} PYTHONPATH={nbs_code}{separator}{bruty_root}')  # add the NBS and Bruty code to the python path
+    cmds.append(" ".join([str(a) for a in args]))
+    if platform.system() == 'Windows':
+        if always_exit:
+            cmds.append("exit")
+        else:
+            cmds.append(f"exiter.bat {SUCCEEDED} {TILE_LOCKED}")  # exiter.bat closes the console if there was no error code, keeps it open if there was an error
+        args = 'cmd.exe /K ' + "&".join(cmds)  # note && only joins commands if they succeed = "0", so just use one ampersand so we can use different return codes
+        kwargs = popen_kwargs(activate=False, minimize=minimized)  # windows specific flags start flags
+    else:
+        cmds.extend(["exit", f"{SUCCEEDED}", f"{TILE_LOCKED}"])
+        args = ['sh', '-c', ';'.join(cmds)]
+        kwargs = {}
+
+    proc = subprocess.Popen(args, **kwargs)
+    os.chdir(restore_dir)
+    return proc
+
+
+def launch_export(config_path, tile_info, use_caches=False,
+           env_path=r'D:\languages\miniconda3\Scripts\activate', env_name='NBS', profile_tile_id=(0, 0),
+           decimals=None, minimized=False, fingerprint="", always_exit=False):
+
+    # spawn a new console, activate a python environment and run the combine.py script with appropriate arguments
+    # FIXME - hack overriding nbs and bruty paths
+    # looks like activate is overwriting the pythonpath, so specify it after the activate command
+    args = ['python']
+    # if profiling:
+    #     args.extend(["-m", "cProfile", "-o", str(pathlib.Path(config_path).parent) + f"\\timing{tile_info.tile}_{tile_info.resolution}.profile"])
+    bruty_code = nbs.bruty.__path__._path[0]
+    script_path = os.path.join(bruty_code, "tile_export.py")
+    args.extend([script_path, "-c", config_path, "-k", str(tile_info.pk)])
+    if decimals is not None:
+        args.extend(["-d", str(decimals)])
+    if fingerprint:
+        args.extend(['-f', fingerprint])
+    if use_caches:
+        args.append("-u")
+
+    # because we are launching separate windows we can't use the subprocess.poll and returncode.
+    # maybe we should switch to just logs and not leave a window on the screen for the user to see
+    # that would make it easier to check the returncode
+    proc = start_process(args, env_path=env_path, env_name=env_name, minimized=minimized, always_exit=always_exit)
+    # os.chdir(restore_dir)
+    ret = proc.pid, script_path
+    return ret
+
+
+def launch_combine(root_path, view_pk_id, config_pth, use_navigation_flag=True, override_epsg=False, extra_debug=False,
+           exclude=None, crop=False, env_path=r'', env_name='', minimized=False,
+           fingerprint="", delete_existing=False, always_exit=False):
+    """
+
+    fingerprint is being used to find the processes that are running.
+    Because of launching cmd.exe there is no direct communication to the python process.
+    Supplying fingerprint will make both the cmd console and the python process easier to find using psutil.
+    """
+    # either launch in a new console with subprocess.popen or use multiprocessing.Process.  Could also consider dask.
+    # spawn a new console, activate a python environment and run the combine.py script with appropriate arguments
+
     args = ['python combine.py']
     for exclusion in exclude:
         args.extend(['-x', exclusion])
@@ -145,18 +173,7 @@ def launch_combine(root_path, view_pk_id, config_pth, use_navigation_flag=True, 
         args.extend(['-f', fingerprint])
     # args.extend(["-d", conn_info.database, "-r", str(conn_info.port), "-o", conn_info.hostname, "-u", conn_info.username,
     #                      "-p", '"'+conn_info.password+'"'])
-    cmds.append(" ".join(args))
-    if platform.system() == 'Windows':
-        cmds.append(f"exiter.bat {SUCCEEDED} {TILE_LOCKED}")  # exiter.bat closes the console if there was no error code, keeps it open if there was an error
-        args = 'cmd.exe /K ' + "&".join(cmds)  # note && only joins commands if they succeed = "0", so just use one ampersand so we can use different return codes
-        kwargs = popen_kwargs(activate=False, minimize=minimized)  # windows specific flags start flags
-    else:
-        cmds.extend(["exit", f"{SUCCEEDED}", f"{TILE_LOCKED}"])
-        args = ['sh', '-c', ';'.join(cmds)]
-        kwargs = {}
-
-    proc = subprocess.Popen(args, **kwargs)
-    os.chdir(restore_dir)
+    proc = start_process(args, env_path=env_path, env_name=env_name, minimized=minimized, always_exit=always_exit)
     ret = proc.pid
     return ret
 
@@ -206,7 +223,7 @@ def export_tile(tile_info, config, sql_info):
         return_process = None
     else:
         LOGGER.info(f"exporting {tile_info.full_name}")
-        fingerprint = str(tile_info.hash_id) + "_" + datetime.now().isoformat()
+        fingerprint = str(tile_info.hash_id()) + "_" + datetime.now().isoformat()
 
         pid, script_path = launch_export(config._source_filename, tile_info, use_caches=use_cached_meta,
                                          env_path=env_path, env_name=env_name,
@@ -220,13 +237,14 @@ def export_tile(tile_info, config, sql_info):
     return return_process
 
 
-def combine_tile(tile_info, config, conn_info, debug_config=False, log_path=""):
+def combine_tile(tile_info, config, conn_info, debug_config=False):
     env_path = config.get('environment_path')
     env_name = config.get('environment_name')
     override = config.getboolean('override', False)
     exclude = parse_multiple_values(config.get('exclude_ids', ''))
     delete_existing = config.getboolean('delete_existing_if_cleanup_needed', False)
     minimized = config.getboolean('MINIMIZED', False)
+    always_exit = config.getboolean('ALWAYS_EXIT', False)
 
     # to make a full utm zone database, take the tile_info and set geometry and tile to None.
     # need to make a copy first
@@ -250,8 +268,8 @@ def combine_tile(tile_info, config, conn_info, debug_config=False, log_path=""):
     else:
         pid = launch_combine(root_path, tile_info.pk, config._source_filename, use_navigation_flag=use_nav_flag,
                              override_epsg=override, extra_debug=debug_config, exclude=exclude, crop=(tile_info.datatype == ENC),
-                             log_path=log_path, env_path=env_path, env_name=env_name, minimized=minimized,
-                             fingerprint=fingerprint, delete_existing=delete_existing)
+                             env_path=env_path, env_name=env_name, minimized=minimized,
+                             fingerprint=fingerprint, delete_existing=delete_existing, always_exit=always_exit)
         running_process = ConsoleProcessTracker(["python", fingerprint, "combine.py"])
         if running_process.console.last_pid != pid:
             LOGGER.warning(f"Process ID mismatch {pid} did not match the found {running_process.console.last_pid}")
