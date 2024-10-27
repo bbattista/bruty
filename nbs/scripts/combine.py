@@ -300,7 +300,8 @@ def process_nbs_database(root_path, conn_info, tile_info, use_navigation_flag=Tr
             # if not extra_debug:
             if world_raster_database.NO_LOCK:
                 tile_info.update_table_record(**{tile_info.combine.END_TIME: "clock_timestamp()", tile_info.combine.EXIT_CODE: ret})
-                tile_info.release_lock()
+                if unlock:
+                    tile_info.release_lock()
     except Exception as e:
         if world_raster_database.NO_LOCK:
             try:
@@ -761,6 +762,12 @@ if __name__ == "__main__":
             LOGGER.error(traceback.format_exc())
             LOGGER.error(msg)
             ret = UNHANDLED_EXCEPTION
+        finally:
+            try:
+                tile_info.release_lock()
+            except:
+                pass
+
         # don't bother writing the completion code if the row was locked - it should just get called again
         if args.fingerprint and ret != TILE_LOCKED:
             try:
