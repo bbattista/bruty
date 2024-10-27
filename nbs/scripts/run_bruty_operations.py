@@ -354,6 +354,12 @@ def main(config):
                     remove_finished_processes(tile_processes, tile_manager)
                     if is_service:
                         get_refresh = True
+                else:
+                    if is_service:
+                        # delay for 30 seconds before starting the next loop to reduce database calls and CPU load
+                        for n in range(15):  # make the keyboard respond more often
+                            time.sleep(2)
+                            do_keyboard_actions(tile_manager, tile_processes)
                 if get_refresh:  # restart the while loop with an updated list of tiles
                     break
 
