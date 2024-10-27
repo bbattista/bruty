@@ -37,7 +37,7 @@ from nbs.scripts.combine import process_nbs_database, SUCCEEDED, TILE_LOCKED, UN
 from nbs.bruty.tile_export import combine_and_export
 from nbs.debugging import get_call_logger, setup_call_logger, log_calls
 
-interactive_debug = True
+interactive_debug = False
 if interactive_debug and sys.gettrace() is None:  # this only is set when a debugger is run (?)
     interactive_debug = False
 debug_launch = False
@@ -360,7 +360,7 @@ def main(config):
                 tile_info.refresh_lock_status(tile_manager.sql_obj)
                 if not tile_info.is_locked:
                     operation = "Combine" if isinstance(tile_info, CombineTileInfo) else "Export"
-                    LOGGER.info(f"starting {operation} for {tile_info}" +
+                    LOGGER.info(f"Trying to start {operation} for {tile_info}" +
                                 f"\n  {len(tile_manager.remaining_tiles)} remain including the {len(tile_processes)} currently running")
                     run_combine = False
                     run_export = False
@@ -373,10 +373,10 @@ def main(config):
                         for tile in combine_tiles:
                             if tile.combine.needs_processing() or tile.is_locked:
                                 run_export = False
-                                LOGGER.debug(f"Export of {tile_info} needs {tile} to combine first - trying to promote it")
                                 if tile.is_locked:
                                     LOGGER.debug(f"Delaying export of {tile_info} because {tile} is locked")
                                 else:
+                                    LOGGER.debug(f"Export of {tile_info} needs {tile} to combine first - trying to promote it")
                                     if tile.hash_id() in tile_manager.remaining_tiles:
                                         tile_info = tile
                                         run_combine = True
