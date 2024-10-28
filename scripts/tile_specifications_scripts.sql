@@ -257,15 +257,27 @@ LANGUAGE plpgsql
 AS $function$
 BEGIN
 	IF TG_OP = 'UPDATE' THEN
-		UPDATE spec_combines SET combine_start_time=NEW.combine_start_time, combine_end_time=NEW.combine_end_time, combine_code=NEW.combine_code,
-			combine_info_log=NEW.combine_info_log, combine_warnings_log=NEW.combine_warnings_log,
-			combine_tries=NEW.combine_tries, combine_data_location=NEW.combine_data_location,
-			out_of_date=NEW.out_of_date, change_summary=NEW.change_summary, summary_datetime=NEW.summary_datetime
-			WHERE c_id=OLD.c_id;
-		UPDATE spec_resolutions SET export_start_time=NEW.export_start_time, export_end_time=NEW.export_end_time, export_code=NEW.export_code,
-			export_info_log=NEW.export_info_log, export_warnings_log=NEW.export_warnings_log,
-			export_tries=NEW.export_tries, export_data_location=NEW.export_data_location
-			WHERE r_id=OLD.res_id;
+		-- Avoid writing to the spec_combines or spec_resolutions as they might be locked.  If a user is pressing the request export/combine tool then we wouldn't need to update the other tables
+		IF OLD.combine_start_time<>NEW.combine_start_time OR OLD.combine_end_time<>NEW.combine_end_time OR OLD.combine_code<>NEW.combine_code OR
+			OLD.combine_info_log<>NEW.combine_info_log OR OLD.combine_warnings_log<>NEW.combine_warnings_log OR
+			OLD.combine_tries<>NEW.combine_tries OR OLD.combine_data_location<>NEW.combine_data_location OR
+			OLD.out_of_date<>NEW.out_of_date OR OLD.change_summary<>NEW.change_summary OR OLD.summary_datetime<>NEW.summary_datetime THEN
+
+			UPDATE spec_combines SET combine_start_time=NEW.combine_start_time, combine_end_time=NEW.combine_end_time, combine_code=NEW.combine_code,
+				combine_info_log=NEW.combine_info_log, combine_warnings_log=NEW.combine_warnings_log,
+				combine_tries=NEW.combine_tries, combine_data_location=NEW.combine_data_location,
+				out_of_date=NEW.out_of_date, change_summary=NEW.change_summary, summary_datetime=NEW.summary_datetime
+				WHERE c_id=OLD.c_id;
+		END IF;
+		IF OLD.export_start_time<>NEW.export_start_time OR OLD.export_end_time<>NEW.export_end_time OR OLD.export_code<>NEW.export_code OR
+			OLD.export_info_log<>NEW.export_info_log OR OLD.export_warnings_log<>NEW.export_warnings_log OR
+			OLD.export_tries<>NEW.export_tries OR OLD.export_data_location<>NEW.export_data_location THEN
+
+			UPDATE spec_resolutions SET export_start_time=NEW.export_start_time, export_end_time=NEW.export_end_time, export_code=NEW.export_code,
+				export_info_log=NEW.export_info_log, export_warnings_log=NEW.export_warnings_log,
+				export_tries=NEW.export_tries, export_data_location=NEW.export_data_location
+				WHERE r_id=OLD.res_id;
+		END IF;
 		IF NEW.request_combine = True THEN
 			UPDATE spec_tiles SET request_combine=TRUE WHERE t_id = (select tile_id from spec_resolutions WHERE r_id=NEW.res_id);
 		END IF;
