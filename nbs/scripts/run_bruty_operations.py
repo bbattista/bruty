@@ -344,11 +344,6 @@ def main(config):
                 for n in range(30):
                     do_keyboard_actions(tile_manager, tile_processes)
                     time.sleep(2)
-            if is_service:
-                # delay for 30 seconds before starting the next loop to reduce database calls and CPU load
-                for n in range(15):  # make the keyboard respond more often
-                    time.sleep(2)
-                    do_keyboard_actions(tile_manager, tile_processes)
             for tile_info in tile_manager.pick_next_tile(tile_processes):
                 do_keyboard_actions(tile_manager, tile_processes)
                 remove_finished_processes(tile_processes, tile_manager)
@@ -404,7 +399,13 @@ def main(config):
                 # If the tile was locked then we will still remove it and let the next refresh get the tile again
                 tile_manager.remove(tile_info)
             remove_finished_processes(tile_processes, tile_manager)
-            time.sleep(5)  # avoid a fast loop of waiting on combines to finish while the export is still in the queue
+            if is_service:
+                # delay for 30 seconds before starting the next loop to reduce database calls and CPU load
+                for n in range(15):  # make the keyboard respond more often
+                    time.sleep(2)
+                    do_keyboard_actions(tile_manager, tile_processes)
+            else:
+                time.sleep(2)
             tile_manager.refresh_tiles_list(needs_combining=True, needs_exporting=True)
             print('.', end='', flush=True)
 
