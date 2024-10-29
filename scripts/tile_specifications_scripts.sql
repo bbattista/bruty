@@ -149,6 +149,7 @@ BEGIN
 	IF new.request_export = TRUE THEN
 		new.export_request_time := now();
 		new.request_export := FALSE;
+		UPDATE spec_resolutions SET export_tries=0 WHERE tile_id=new.t_id;
 	END IF;
 	IF new.request_enc = TRUE THEN
 		new.enc_request_time := now();

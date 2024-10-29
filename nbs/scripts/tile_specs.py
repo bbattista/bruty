@@ -939,7 +939,9 @@ def get_combine_records(config, needs_to_process=False, get_lock_status=True, ma
     # @NOTE we must use the same alias for the spec_resolutions table as the JOINED_TABLE string since that is what the LOCK_QUERY is looking for
     sql_obj.cursor.execute(f"""SELECT {TileInfo.TILE}, {TileInfo.UTM}, {TileInfo.PB},{TileInfo.DATUM}, {TileInfo.LOCALITY}, {TileInfo.HEMISPHERE}, 
                             {TileInfo.PRIORITY}, {TileInfo.BUILD},
-                            {CombineOperation.START_TIME}, {CombineOperation.END_TIME}, {CombineOperation.EXIT_CODE}, {CombineOperation.TRIES}, {CombineOperation.REQUEST_TIME},
+                            {CombineOperation.START_TIME}, {CombineOperation.END_TIME}, {CombineOperation.EXIT_CODE}, 
+                            {CombineOperation.TRIES}, {CombineOperation.REQUEST_TIME}, 
+                            {ENCCombineOperation.REQUEST_TIME},
                             {ResolutionTileInfo.RESOLUTION}, 
                             {CombineTileInfo.DATATYPE}, {CombineTileInfo.FOR_NAV}, {CombineTileInfo.PRIMARY_KEY},  
                             {CombineTileInfo.LOCK_QUERY} 
