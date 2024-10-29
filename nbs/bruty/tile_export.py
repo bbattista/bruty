@@ -368,13 +368,14 @@ def get_metadata(combine_tiles, conn_info, use_bruty_cached=False):
     return all_simple_records, sort_dict
 
 
-def combine_and_export(config, tile_info, decimals=None, use_caches=False):
+def combine_and_export(config, tile_info, use_caches=False):
     # conn_info.database = "metadata"
     conn_info_exports = connect_params_from_config(config)
     conn_info_exports.database = config.get('export_database', None)
     conn_info_exports.tablenames = [config.get('export_table', "")]
     bruty_dir = config['data_dir']
     export_dir = config['export_dir']
+    decimals = config.getint('decimals', None)
     time_format = "%Y%m%d_%H%M%S"
     export_time = datetime.datetime.now().strftime(time_format)
 
@@ -1475,8 +1476,6 @@ def make_parser():
                         help="Used cached metadata stored in the bruty database directories")
     parser.add_argument("-k", "--res_tile_pk_id", type=int, metavar='res_tile_pk_id',
                         help=f"primary key of the tile to export from the {ResolutionTileInfo.SOURCE_TABLE} table")
-    parser.add_argument("-d", "--decimals", type=int, metavar='decimals', default=None,  # nargs="+"
-                        help="number of decimals to keep in elevation and uncertainty bands")
     parser.add_argument("-f", "--fingerprint", type=str, metavar='fingerprint', default="",
                         help="fingerprint to store success/fail code with in sqlite db within the REVIEWED (qualified), for_navigation database")
     return parser
@@ -1505,7 +1504,7 @@ if __name__ == "__main__":
         tile_info = ResolutionTileInfo.from_table(conn_info, args.res_tile_pk_id)
         try:
             LOGGER.info(f"Exporting {tile_info}")
-            ret = combine_and_export(config, tile_info, args.decimals, args.use_caches)
+            ret = combine_and_export(config, tile_info, args.use_caches)
         except Exception as e:
             traceback.print_exc()
             msg = f"{tile_info.full_name} had an unhandled exception - see message above"

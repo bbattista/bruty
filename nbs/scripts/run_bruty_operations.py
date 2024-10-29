@@ -114,7 +114,7 @@ def start_process(args, env_path=r'', env_name='', minimized=False, always_exit=
 
 def launch_export(config_path, tile_info, use_caches=False,
            env_path=r'D:\languages\miniconda3\Scripts\activate', env_name='NBS', profile_tile_id=(0, 0),
-           decimals=None, minimized=False, fingerprint="", always_exit=False):
+           minimized=False, fingerprint="", always_exit=False):
 
     # spawn a new console, activate a python environment and run the combine.py script with appropriate arguments
     # FIXME - hack overriding nbs and bruty paths
@@ -125,8 +125,6 @@ def launch_export(config_path, tile_info, use_caches=False,
     bruty_code = nbs.bruty.__path__._path[0]
     script_path = os.path.join(bruty_code, "tile_export.py")
     args.extend([script_path, "-c", config_path, "-k", str(tile_info.pk)])
-    if decimals is not None:
-        args.extend(["-d", str(decimals)])
     if fingerprint:
         args.extend(['-f', fingerprint])
     if use_caches:
@@ -210,7 +208,6 @@ class TileRuns:
 
 
 def export_tile(tile_info, config, sql_info):
-    decimals = config.getint('decimals', None)
     use_cached_meta = config.getboolean('USE_CACHED_METADATA', False)
     env_path = config.get('environment_path')
     env_name = config.get('environment_name')
@@ -220,7 +217,7 @@ def export_tile(tile_info, config, sql_info):
     return_process = None
 
     if interactive_debug and debug_launch:
-        combine_and_export(config, tile_info, decimals, use_cached_meta)
+        combine_and_export(config, tile_info, use_cached_meta)
         return_process = None
     else:
         LOGGER.info(f"exporting {tile_info.full_name}")
@@ -228,7 +225,7 @@ def export_tile(tile_info, config, sql_info):
 
         pid, script_path = launch_export(config._source_filename, tile_info, use_caches=use_cached_meta,
                                          env_path=env_path, env_name=env_name,
-                                         decimals=decimals, minimized=minimized, fingerprint=fingerprint, always_exit=always_exit)
+                                         minimized=minimized, fingerprint=fingerprint, always_exit=always_exit)
         running_process = ConsoleProcessTracker(["python", fingerprint, script_path])
         if running_process.console.last_pid != pid:
             LOGGER.warning(f"Process ID mismatch {pid} did not match the found {running_process.console.last_pid}")
