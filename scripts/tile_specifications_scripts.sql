@@ -248,36 +248,64 @@ CREATE VIEW view_individual_combines AS
 		R.export_code, R.export_tries, R.export_warnings_log, R.export_info_log, R.export_data_location,
 		B.change_summary, B.summary_datetime, B.out_of_date,
 		B.c_id, B.res_id, R.tile_id, TI.geometry
-	FROM spec_combines B JOIN spec_resolutions R ON (B.res_id = R.r_id) JOIN spec_tiles TI ON (R.tile_id = TI.t_id);
+	FROM spec_combines B JOIN spec_resolutions R ON (B.res_id = R.r_id) JOIN spec_tiles TI ON (R.tile_id = TI.t_id)
+	WHERE TI.build is True;
 
 
 CREATE OR REPLACE FUNCTION edit_combine_view()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $function$
+DECLARE
+	_combine_locked bool;
+	_export_locked bool;
+	_combine_lock_cnt int;
+	_export_lock_cnt int;
 BEGIN
 	IF TG_OP = 'UPDATE' THEN
+		-- check if the row is locked for data changes or if another related record is locked in the case of combine/export requests
+		SELECT (SELECT c_id NOT IN (SELECT c_id FROM spec_combines FOR UPDATE SKIP LOCKED)) INTO _combine_locked from spec_combines WHERE c_id=NEW.c_id;
+		SELECT (SELECT r_id NOT IN (SELECT r_id FROM spec_resolutions FOR UPDATE SKIP LOCKED)) INTO _export_locked from spec_resolutions WHERE r_id=NEW.res_id;
+		SELECT count(*) INTO _combine_lock_cnt FROM (SELECT (SELECT c_id NOT IN (SELECT c_id FROM spec_combines FOR UPDATE SKIP LOCKED)) AS running from view_individual_combines WHERE tile_id=NEW.tile_id) as a WHERE a.running=True;
+		SELECT count(*) INTO _export_lock_cnt FROM (SELECT (SELECT res_id NOT IN (SELECT r_id FROM spec_resolutions FOR UPDATE SKIP LOCKED)) AS running from view_individual_combines WHERE tile_id=NEW.tile_id) as a WHERE a.running=True;
+		-- TODO this error message should be a variable rather than copied four times.
+		-- raise 'c:% e:% cc:% % ec:% %', _combine_locked, _export_locked, _combine_lock_cnt, NEW.request_combine, _export_lock_cnt, NEW.request_export;
+		if _combine_lock_cnt>0 AND NEW.request_combine THEN
+			raise '% combines are running for % % % tile:% %m % nav:%', _combine_lock_cnt, NEW.production_branch, NEW.utm, NEW.locality, NEW.tile, NEW.resolution, NEW.datatype, NEW.for_navigation;
+		END IF;
+		if _export_lock_cnt>0 AND NEW.request_export THEN
+			raise '% exports are running for % % % tile:% %m % nav:%', _export_lock_cnt, NEW.production_branch, NEW.utm, NEW.locality, NEW.tile, NEW.resolution, NEW.datatype, NEW.for_navigation;
+		END IF;
 		-- Avoid writing to the spec_combines or spec_resolutions as they might be locked.  If a user is pressing the request export/combine tool then we wouldn't need to update the other tables
 		IF OLD.combine_start_time<>NEW.combine_start_time OR OLD.combine_end_time<>NEW.combine_end_time OR OLD.combine_code<>NEW.combine_code OR
 			OLD.combine_info_log<>NEW.combine_info_log OR OLD.combine_warnings_log<>NEW.combine_warnings_log OR
 			OLD.combine_tries<>NEW.combine_tries OR OLD.combine_data_location<>NEW.combine_data_location OR
 			OLD.out_of_date<>NEW.out_of_date OR OLD.change_summary<>NEW.change_summary OR OLD.summary_datetime<>NEW.summary_datetime THEN
 
-			UPDATE spec_combines SET combine_start_time=NEW.combine_start_time, combine_end_time=NEW.combine_end_time, combine_code=NEW.combine_code,
-				combine_info_log=NEW.combine_info_log, combine_warnings_log=NEW.combine_warnings_log,
-				combine_tries=NEW.combine_tries, combine_data_location=NEW.combine_data_location,
-				out_of_date=NEW.out_of_date, change_summary=NEW.change_summary, summary_datetime=NEW.summary_datetime
-				WHERE c_id=OLD.c_id;
+			if _combine_locked THEN
+				raise 'combine is running and the record is locked for % % % tile:% %m % nav:%', NEW.production_branch, NEW.utm, NEW.locality, NEW.tile, NEW.resolution, NEW.datatype, NEW.for_navigation;
+			END IF;
+
 		END IF;
 		IF OLD.export_start_time<>NEW.export_start_time OR OLD.export_end_time<>NEW.export_end_time OR OLD.export_code<>NEW.export_code OR
 			OLD.export_info_log<>NEW.export_info_log OR OLD.export_warnings_log<>NEW.export_warnings_log OR
 			OLD.export_tries<>NEW.export_tries OR OLD.export_data_location<>NEW.export_data_location THEN
 
-			UPDATE spec_resolutions SET export_start_time=NEW.export_start_time, export_end_time=NEW.export_end_time, export_code=NEW.export_code,
-				export_info_log=NEW.export_info_log, export_warnings_log=NEW.export_warnings_log,
-				export_tries=NEW.export_tries, export_data_location=NEW.export_data_location
-				WHERE r_id=OLD.res_id;
+			if _export_locked THEN
+				raise 'export is running and the record is locked for % % % tile:% %m % nav:%', NEW.production_branch, NEW.utm, NEW.locality, NEW.tile, NEW.resolution, NEW.datatype, NEW.for_navigation;
+			END IF;
+
 		END IF;
+		-- Now write the data since we checked on the related locks
+		UPDATE spec_combines SET combine_start_time=NEW.combine_start_time, combine_end_time=NEW.combine_end_time, combine_code=NEW.combine_code,
+			combine_info_log=NEW.combine_info_log, combine_warnings_log=NEW.combine_warnings_log,
+			combine_tries=NEW.combine_tries, combine_data_location=NEW.combine_data_location,
+			out_of_date=NEW.out_of_date, change_summary=NEW.change_summary, summary_datetime=NEW.summary_datetime
+			WHERE c_id=OLD.c_id;
+		UPDATE spec_resolutions SET export_start_time=NEW.export_start_time, export_end_time=NEW.export_end_time, export_code=NEW.export_code,
+			export_info_log=NEW.export_info_log, export_warnings_log=NEW.export_warnings_log,
+			export_tries=NEW.export_tries, export_data_location=NEW.export_data_location
+			WHERE r_id=OLD.res_id;
 		IF NEW.request_combine = True THEN
 			UPDATE spec_tiles SET request_combine=TRUE WHERE t_id = (select tile_id from spec_resolutions WHERE r_id=NEW.res_id);
 		END IF;
@@ -292,7 +320,6 @@ BEGIN
 	RETURN NEW;
 END;
 $function$;
-
 
 CREATE OR REPLACE TRIGGER edit_combine_view_trigger
     INSTEAD OF INSERT OR DELETE OR UPDATE

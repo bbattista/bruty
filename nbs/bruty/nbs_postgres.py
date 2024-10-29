@@ -43,7 +43,7 @@ _SCRIPT_MANUAL_METADATA = ['start_date', 'start_date', 'end_date', 'end_date', '
                           'complete_coverage', 'bathymetry']
 EXPORT_METADATA_COLUMNS = ['script_'+key for key in _SCRIPT_MANUAL_METADATA] +\
                           ['manual_'+key for key in _SCRIPT_MANUAL_METADATA] +\
-                          ['decay_score']
+                          ['decay_score', 'nbs_reviewed']
 
 TRANSFORM_METADATA_COLUMNS = [NBS_ID_STR, 'manual_to_horiz_frame', 'script_to_horiz_frame', 'manual_to_horiz_type', 'script_to_horiz_type', 'manual_to_horiz_key', 'script_to_horiz_key',
                               'manual_vert_uncert_fixed', 'script_vert_uncert_fixed', 'manual_vert_uncert_vari', 'script_vert_uncert_vari']
