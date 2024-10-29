@@ -395,9 +395,9 @@ def combine_and_export(config, tile_info, decimals=None, use_caches=False):
         for h in logging.getLogger("nbs").handlers:
             if isinstance(h, logging.FileHandler):
                 if f"{os.getpid()}" in h.baseFilename:
-                    if ".warnings" in h.baseFilename:
+                    if f"{os.getpid()}.warnings" in h.baseFilename:
                         warnings_log = f"'{h.baseFilename}'"
-                    elif ".log" in h.baseFilename:
+                    elif f"{os.getpid()}.log" in h.baseFilename:
                         info_log = f"'{h.baseFilename}'"  # single quotes for postgres
 
         tile_info.update_table_record(**{tile_info.export.START_TIME: "NOW()", tile_info.export.TRIES: f"COALESCE({tile_info.export.TRIES}, 0) + 1",

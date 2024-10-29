@@ -215,6 +215,7 @@ def export_tile(tile_info, config, sql_info):
     env_path = config.get('environment_path')
     env_name = config.get('environment_name')
     minimized = config.getboolean('MINIMIZED', False)
+    always_exit = config.getboolean('ALWAYS_EXIT', False)
 
     return_process = None
 
@@ -227,7 +228,7 @@ def export_tile(tile_info, config, sql_info):
 
         pid, script_path = launch_export(config._source_filename, tile_info, use_caches=use_cached_meta,
                                          env_path=env_path, env_name=env_name,
-                                         decimals=decimals, minimized=minimized, fingerprint=fingerprint)
+                                         decimals=decimals, minimized=minimized, fingerprint=fingerprint, always_exit=always_exit)
         running_process = ConsoleProcessTracker(["python", fingerprint, script_path])
         if running_process.console.last_pid != pid:
             LOGGER.warning(f"Process ID mismatch {pid} did not match the found {running_process.console.last_pid}")

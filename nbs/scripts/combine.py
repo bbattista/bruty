@@ -280,9 +280,9 @@ def process_nbs_database(root_path, conn_info, tile_info, use_navigation_flag=Tr
             for h in logging.getLogger("nbs").handlers:
                 if isinstance(h, logging.FileHandler):
                     if f"{os.getpid()}" in h.baseFilename:
-                        if ".warnings.log" in h.baseFilename:
+                        if f"{os.getpid()}.warnings.log" in h.baseFilename:
                             warnings_log = f"'{h.baseFilename}'"
-                        elif ".log" in h.baseFilename:
+                        elif f"{os.getpid()}.log" in h.baseFilename:
                             info_log = f"'{h.baseFilename}'"  # single quotes for postgres
             tile_info.update_table_record(**{tile_info.combine.START_TIME: "clock_timestamp()", tile_info.combine.TRIES: f"COALESCE({tile_info.combine.TRIES}, 0) + 1",
                                              tile_info.combine.DATA_LOCATION: f"'{tile_info.combine.data_location}'",
