@@ -144,16 +144,17 @@ BEGIN
 	IF new.request_combine = TRUE THEN
 		new.combine_request_time := now();
 		new.request_combine := FALSE;
-		UPDATE spec_combines SET combine_tries=0 WHERE spec_combines.res_id IN (SELECT r_id FROM spec_resolutions WHERE spec_resolutions.tile_id=new.t_id);
+		UPDATE spec_combines SET combine_tries=0 WHERE spec_combines.datatype<>'enc' AND spec_combines.res_id IN (SELECT r_id FROM spec_resolutions WHERE spec_resolutions.tile_id=new.t_id);
+	END IF;
+	IF new.request_enc = TRUE THEN
+		new.enc_request_time := now();
+		new.request_enc := FALSE;
+		UPDATE spec_combines SET combine_tries=0 WHERE spec_combines.datatype='enc' AND spec_combines.res_id IN (SELECT r_id FROM spec_resolutions WHERE spec_resolutions.tile_id=new.t_id);
 	END IF;
 	IF new.request_export = TRUE THEN
 		new.export_request_time := now();
 		new.request_export := FALSE;
 		UPDATE spec_resolutions SET export_tries=0 WHERE tile_id=new.t_id;
-	END IF;
-	IF new.request_enc = TRUE THEN
-		new.enc_request_time := now();
-		new.request_enc := FALSE;
 	END IF;
 	RETURN NEW;
 END;
