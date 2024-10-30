@@ -1495,7 +1495,7 @@ if __name__ == "__main__":
         ret = 1
 
     if args.config and args.res_tile_pk_id:
-        config_file = read_config(args.config, log_files=True, log_prefix=f"_{args.res_tile_pk_id}", base_log_dirs=None, pid_log_dirs=['logs', 'exports'])
+        config_file = read_config(args.config, log_files=True, log_prefix=f"_export_{args.res_tile_pk_id}", base_log_dirs=None, pid_log_dirs=['logs', 'exports'])
         log_path = pathlib.Path(args.config)
         config = config_file['DEFAULT']
         # use_locks(args.lock_server)

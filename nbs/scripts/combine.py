@@ -697,7 +697,7 @@ if __name__ == "__main__":
         ret = NOT_ENOUGH_ARGS
     proc_start = time.time()
     if args.bruty_path:
-        config_obj = read_config(args.config_path, log_files=True, log_prefix=f"_{args.combine_pk_id}", base_log_dirs=None, pid_log_dirs=['logs', 'combines'])
+        config_obj = read_config(args.config_path, log_files=True, log_prefix=f"_combine_{args.combine_pk_id}", base_log_dirs=None, pid_log_dirs=['logs', 'combines'])
         config = config_obj['DEFAULT']
         conn_info = connect_params_from_config(config)
 
