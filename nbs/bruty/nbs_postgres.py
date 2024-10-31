@@ -218,7 +218,12 @@ def pg_update(cursor, table_name, where, **kwargs):
     None
     """
     set_str = ', '.join([f"{k} = {v}" for k,v in kwargs.items()])
-    where_str = ' AND '.join([f"{k} = {v}" for k,v in where.items()])
+    if isinstance(where, dict):
+        where_str = ' AND '.join([f"{k} = {v}" for k,v in where.items()])
+    elif isinstance(where, str):
+        where_str = where
+    elif isinstance(where, (list, tuple)):
+        where_str = ' AND '.join(where)
     if where_str:
         where_str = f"WHERE {where_str}"
     update_query = f"""UPDATE {table_name} SET {set_str} {where_str}"""
