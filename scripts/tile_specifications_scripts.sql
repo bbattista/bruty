@@ -249,6 +249,7 @@ CREATE VIEW view_individual_combines AS
 		R.export_start_time, R.export_end_time,
 		R.export_code, R.export_tries, R.export_warnings_log, R.export_info_log, R.export_data_location,
 		B.change_summary, B.summary_datetime, B.out_of_date,
+		TI.request_enc, TI.enc_request_time,
 		B.c_id, B.res_id, R.tile_id, TI.geometry
 	FROM spec_combines B JOIN spec_resolutions R ON (B.res_id = R.r_id) JOIN spec_tiles TI ON (R.tile_id = TI.t_id)
 	WHERE TI.build is True;
@@ -272,7 +273,7 @@ BEGIN
 		SELECT count(*) INTO _export_lock_cnt FROM (SELECT (SELECT res_id NOT IN (SELECT r_id FROM spec_resolutions FOR UPDATE SKIP LOCKED)) AS running from view_individual_combines WHERE tile_id=NEW.tile_id) as a WHERE a.running=True;
 		-- TODO this error message should be a variable rather than copied four times.
 		-- raise 'c:% e:% cc:% % ec:% %', _combine_locked, _export_locked, _combine_lock_cnt, NEW.request_combine, _export_lock_cnt, NEW.request_export;
-		if _combine_lock_cnt>0 AND NEW.request_combine THEN
+		if _combine_lock_cnt>0 AND (NEW.request_combine OR NEW.request_enc) THEN
 			raise '% combines are running for % % % tile:% %m % nav:%', _combine_lock_cnt, NEW.production_branch, NEW.utm, NEW.locality, NEW.tile, NEW.resolution, NEW.datatype, NEW.for_navigation;
 		END IF;
 		if _export_lock_cnt>0 AND NEW.request_export THEN
@@ -308,8 +309,8 @@ BEGIN
 			export_info_log=NEW.export_info_log, export_warnings_log=NEW.export_warnings_log,
 			export_tries=NEW.export_tries, export_data_location=NEW.export_data_location
 			WHERE r_id=OLD.res_id;
-		IF NEW.request_combine = True THEN
-			UPDATE spec_tiles SET request_combine=TRUE WHERE t_id = (select tile_id from spec_resolutions WHERE r_id=NEW.res_id);
+		IF NEW.request_combine = True OR NEW.request_enc THEN
+			UPDATE spec_tiles SET request_combine=NEW.request_combine, request_enc=NEW.request_enc WHERE t_id = (select tile_id from spec_resolutions WHERE r_id=NEW.res_id);
 		END IF;
 		IF NEW.request_export = True THEN
 			UPDATE spec_tiles SET request_export=TRUE WHERE t_id = (select tile_id from spec_resolutions WHERE r_id=NEW.res_id);

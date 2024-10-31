@@ -130,8 +130,7 @@ def launch_export(config_path, tile_info, use_caches=False,
     # that would make it easier to check the returncode
     proc = start_process(args, env_path=env_path, env_name=env_name, minimized=minimized, always_exit=always_exit)
     # os.chdir(restore_dir)
-    ret = proc.pid, script_path
-    return ret
+    return proc.pid, script_path
 
 
 def launch_combine(root_path, view_pk_id, config_pth, use_navigation_flag=True, override_epsg=False, extra_debug=False,
@@ -169,13 +168,13 @@ def launch_combine(root_path, view_pk_id, config_pth, use_navigation_flag=True, 
     # args.extend(["-d", conn_info.database, "-r", str(conn_info.port), "-o", conn_info.hostname, "-u", conn_info.username,
     #                      "-p", '"'+conn_info.password+'"'])
     proc = start_process(args, env_path=env_path, env_name=env_name, minimized=minimized, always_exit=always_exit)
-    ret = proc.pid
-    return ret
+    return proc.pid, script_path
 
 
 # attribute(@feature, 'combine_start_time') is not NULL and ((attribute(@feature, 'combine_start_time') > attribute(@feature, 'combine_end_time')) or ((attribute(@feature, 'combine_start_time') is not NULL and attribute(@feature, 'combine_end_time') is NULL)))
 def remove_finished_processes(tile_processes, tile_manager):
     for key in list(tile_processes.keys()):
+        print(f"looking for {tile_processes[key].tile_info}")
         if not tile_processes[key].console_process.is_running():
             old_tile = tile_processes[key].tile_info
             operation = "Combine" if isinstance(old_tile, CombineTileInfo) else "Export"
@@ -261,11 +260,11 @@ def combine_tile(tile_info, config, conn_info, debug_config=False):
                                    delete_existing=delete_existing, log_level=get_log_level(config))
         errors = perform_qc_checks(tile_info, conn_info, (use_nav_flag, tile_info.for_nav), repair=True, check_last_insert=False)
     else:
-        pid = launch_combine(root_path, tile_info.pk, config._source_filename, use_navigation_flag=use_nav_flag,
+        pid, script_path = launch_combine(root_path, tile_info.pk, config._source_filename, use_navigation_flag=use_nav_flag,
                              override_epsg=override, extra_debug=debug_config, exclude=exclude, crop=(tile_info.datatype == ENC),
                              env_path=env_path, env_name=env_name, minimized=minimized,
                              fingerprint=fingerprint, delete_existing=delete_existing, always_exit=always_exit)
-        running_process = ConsoleProcessTracker(["python", fingerprint, "combine.py"])
+        running_process = ConsoleProcessTracker(["python", fingerprint, script_path])
         if running_process.console.last_pid != pid:
             LOGGER.warning(f"Process ID mismatch {pid} did not match the found {running_process.console.last_pid}")
         else:

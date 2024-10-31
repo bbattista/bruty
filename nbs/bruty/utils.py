@@ -1245,7 +1245,7 @@ class ConsoleProcessTracker:
             if platform.system() == "Windows":
                 console_str = "cmd.exe"
             else:
-                console_str = 'tmux'
+                console_str = 'bash'
         self.console = ProcessTracker(list(cmds) + [console_str], excludes, ignore_pids)
         if platform.system() == "Windows":
             self.app = ProcessTracker(cmds, list(excludes) + [console_str])
