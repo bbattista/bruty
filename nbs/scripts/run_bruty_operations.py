@@ -21,18 +21,12 @@ import psutil
 import fuse_dev
 import nbs.bruty
 
-from nbs.bruty import world_raster_database
-from nbs.bruty.world_raster_database import WorldDatabase, use_locks, UTMTileBackendExactRes, NO_OVERRIDE
-from nbs.bruty.exceptions import UserCancelled, BrutyFormatError, BrutyMissingScoreError, BrutyUnkownCRS, BrutyError
-# import locks from world_raster_database in case we are in debug mode and have turned locks off
-from nbs.bruty.world_raster_database import LockNotAcquired, AreaLock, FileLock, EXCLUSIVE, SHARED, NON_BLOCKING, SqlLock, NameLock
-# from nbs.bruty.nbs_locks import LockNotAcquired, AreaLock, FileLock, EXCLUSIVE, SHARED, NON_BLOCKING, SqlLock, NameLock
-from nbs.bruty.nbs_locks import Lock, AlreadyLocked, LockFlags
+from nbs.bruty.world_raster_database import use_locks
+from nbs.bruty.exceptions import UserCancelled
 from nbs.bruty.utils import onerr, user_action, popen_kwargs, ConsoleProcessTracker, QUIT, HELP, DETAILS
 from nbs.configs import get_logger, run_command_line_configs, parse_multiple_values, show_logger_handlers, get_log_level
-# , iter_configs, set_stream_logging, log_config, parse_multiple_values, make_family_of_logs
 from nbs.bruty.nbs_postgres import ENC, connect_params_from_config
-from nbs.scripts.tile_specs import create_world_db, TileToProcess, TileProcess, TileManager, ResolutionTileInfo, CombineTileInfo, TileInfo
+from nbs.scripts.tile_specs import TileToProcess, TileProcess, TileManager, ResolutionTileInfo, CombineTileInfo, TileInfo
 from nbs.scripts.combine import process_nbs_database, SUCCEEDED, TILE_LOCKED, UNHANDLED_EXCEPTION, DATA_ERRORS, perform_qc_checks
 from nbs.bruty.tile_export import combine_and_export
 from nbs.debugging import get_call_logger, setup_call_logger, log_calls
@@ -103,10 +97,11 @@ def start_process(args, env_path=r'', env_name='', minimized=False, always_exit=
         args = 'cmd.exe /K ' + "&".join(cmds)  # note && only joins commands if they succeed = "0", so just use one ampersand so we can use different return codes
         kwargs = popen_kwargs(activate=False, minimize=minimized)  # windows specific flags start flags
     else:
-        cmds.extend(["exit", f"{SUCCEEDED}", f"{TILE_LOCKED}"])
-        args = ['sh', '-c', ';'.join(cmds)]
+        # cmds.extend(["exit", f"{SUCCEEDED}", f"{TILE_LOCKED}"])
+        # args = ['sh', '-c', ';'.join(cmds)]
+        args = ['tmux', 'new-window', '-t', 'Bruty', ';'.join(cmds)]  # +";sh -i"  # sh -i is interactive shell and keeps the window open
         kwargs = {}
-
+    print(args)
     proc = subprocess.Popen(args, **kwargs)
     os.chdir(restore_dir)
     return proc
@@ -151,7 +146,9 @@ def launch_combine(root_path, view_pk_id, config_pth, use_navigation_flag=True, 
     # either launch in a new console with subprocess.popen or use multiprocessing.Process.  Could also consider dask.
     # spawn a new console, activate a python environment and run the combine.py script with appropriate arguments
 
-    args = ['python combine.py']
+    script_dir = nbs.scripts.__path__._path[0]
+    script_path = os.path.join(script_dir, "combine.py")
+    args = ['python', script_path]
     for exclusion in exclude:
         args.extend(['-x', exclusion])
     args.extend(["-k", str(view_pk_id)])

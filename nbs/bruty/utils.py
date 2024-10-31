@@ -1245,11 +1245,11 @@ class ConsoleProcessTracker:
             if platform.system() == "Windows":
                 console_str = "cmd.exe"
             else:
-                console_str = 'sh'
+                console_str = 'tmux'
         self.console = ProcessTracker(list(cmds) + [console_str], excludes, ignore_pids)
         if platform.system() == "Windows":
             self.app = ProcessTracker(cmds, list(excludes) + [console_str])
-        else:  # linux is not showing a second process id like Windows is, so just track the sh process
+        else:  # linux is not showing a second process id like Windows is, so just track the tumx process
             self.app = self.console
 
     def is_running(self):
