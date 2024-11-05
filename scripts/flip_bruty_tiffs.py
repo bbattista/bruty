@@ -67,11 +67,14 @@ def set_bruty_tiffs_orientation(bruty_path, positive_ns=False, just_size=False):
     changed_data = False
     for tx, ty in db.db.iterate_filled_tile_indices():
         data_dir = bruty_path.joinpath(f"{tx}", f"{ty}")
-        meta = json.load(open(data_dir.joinpath("metadata.json")))
-        min_y = meta["min_y"]
-        max_y = meta["max_y"]
+        try:
+            meta = json.load(open(data_dir.joinpath("metadata.json")))
+            min_y = meta["min_y"]
+            max_y = meta["max_y"]
+        except:
+            continue
         for fname in os.scandir(data_dir):
-            if ".tif" in str(fname.name):
+            if str(fname.name).lower().endswith(".tif"):
                 sz += pathlib.Path(fname).stat().st_size
                 cnt += 1
                 if not just_size:
@@ -81,7 +84,7 @@ def set_bruty_tiffs_orientation(bruty_path, positive_ns=False, just_size=False):
                         ds.SetGeoTransform((x1, resx, dxy, min_y, dyx, resy))
                         changed_data = True
                     if not positive_ns and y1 != max_y:
-                        ds.SetGeoTransform((x1, resx, dxy, min_y, dyx, resy))
+                        ds.SetGeoTransform((x1, resx, dxy, max_y, dyx, resy))
                         changed_data = True
                     if (resy < 0 and positive_ns) or (resy > 0 and not positive_ns):
                         for lyr in range(ds.RasterCount):
@@ -90,11 +93,11 @@ def set_bruty_tiffs_orientation(bruty_path, positive_ns=False, just_size=False):
                             band.WriteArray(numpy.flipud(arr))
                             del band
                         ds.SetGeoTransform((x1, resx, dxy, y1 + resy * arr.shape[0], dyx, -resy))
-                        del ds
                         changed_data = True
                     else:
                         pass
-    if not just_size and changed_data:
+                    del ds
+    if False and not just_size and changed_data:
         try:
             db.create_vrt()
         except Exception as e:
