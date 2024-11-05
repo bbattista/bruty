@@ -287,7 +287,8 @@ class TiffStorage(Storage):
             dy = (max_y - min_y) / shape[1]
             epsg = meta['epsg']
             # set y resolution to negative to support VRTs -- the get_ and set_arrays will flip the data so it looks positive to the caller
-            gt = [min_x, dx, 0, min_y, 0, -dy]
+            # And set y origin to be the top of the image
+            gt = [min_x, dx, 0, max_y, 0, -dy]
 
             # Set location
             dataset.SetGeoTransform(gt)

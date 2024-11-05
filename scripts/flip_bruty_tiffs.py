@@ -1,3 +1,4 @@
+import json
 import platform
 import time
 import os
@@ -63,8 +64,12 @@ def set_bruty_tiffs_orientation(bruty_path, positive_ns=False, just_size=False):
     bruty_path = pathlib.Path(bruty_path)
     db = WorldDatabase.open(bruty_path)
     msg = ""
+    changed_data = False
     for tx, ty in db.db.iterate_filled_tile_indices():
         data_dir = bruty_path.joinpath(f"{tx}", f"{ty}")
+        meta = json.load(open(data_dir.joinpath("metadata.json")))
+        min_y = meta["min_y"]
+        max_y = meta["max_y"]
         for fname in os.scandir(data_dir):
             if ".tif" in str(fname.name):
                 sz += pathlib.Path(fname).stat().st_size
@@ -72,6 +77,12 @@ def set_bruty_tiffs_orientation(bruty_path, positive_ns=False, just_size=False):
                 if not just_size:
                     ds = gdal.Open(str(data_dir.joinpath(fname.name)), gdal.GA_Update)
                     x1, resx, dxy, y1, dyx, resy = ds.GetGeoTransform()
+                    if positive_ns and y1 != min_y:
+                        ds.SetGeoTransform((x1, resx, dxy, min_y, dyx, resy))
+                        changed_data = True
+                    if not positive_ns and y1 != max_y:
+                        ds.SetGeoTransform((x1, resx, dxy, min_y, dyx, resy))
+                        changed_data = True
                     if (resy < 0 and positive_ns) or (resy > 0 and not positive_ns):
                         for lyr in range(ds.RasterCount):
                             band = ds.GetRasterBand(lyr + 1)
@@ -80,9 +91,10 @@ def set_bruty_tiffs_orientation(bruty_path, positive_ns=False, just_size=False):
                             del band
                         ds.SetGeoTransform((x1, resx, dxy, y1 + resy * arr.shape[0], dyx, -resy))
                         del ds
+                        changed_data = True
                     else:
                         pass
-    if not just_size:
+    if not just_size and changed_data:
         try:
             db.create_vrt()
         except Exception as e:
