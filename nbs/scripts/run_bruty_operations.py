@@ -99,7 +99,8 @@ def start_process(args, env_path=r'', env_name='', minimized=False, always_exit=
     else:
         # cmds.extend(["exit", f"{SUCCEEDED}", f"{TILE_LOCKED}"])
         # args = ['sh', '-c', ';'.join(cmds)]
-        args = ['tmux', 'new-window', '-t', 'Bruty', ';'.join(cmds)]  # +";sh -i"  # sh -i is interactive shell and keeps the window open
+        # args = ['tmux', 'new-window', '-t', 'Bruty', ';'.join(cmds)]  # +";sh -i"  # sh -i is interactive shell and keeps the window open
+        args = ['bash', "-c", ';'.join(cmds)]  # tmux wasn't working with the socket on NBS07 so just falling back to plain bash
         kwargs = {}
     print(args)
     proc = subprocess.Popen(args, **kwargs)
