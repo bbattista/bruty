@@ -57,7 +57,7 @@
             <Option value="collection" name="type" type="QString"/>
           </Option>
         </data_defined_properties>
-        <layer class="SimpleFill" locked="0" enabled="1" pass="6">
+        <layer class="SimpleFill" locked="0" enabled="1" pass="5">
           <Option type="Map">
             <Option value="3x:0,0,0,0,0,0" name="border_width_map_unit_scale" type="QString"/>
             <Option value="200,0,3,255" name="color" type="QString"/>
@@ -119,7 +119,7 @@
             <Option value="collection" name="type" type="QString"/>
           </Option>
         </data_defined_properties>
-        <layer class="SimpleFill" locked="0" enabled="1" pass="5">
+        <layer class="SimpleFill" locked="0" enabled="1" pass="6">
           <Option type="Map">
             <Option value="3x:0,0,0,0,0,0" name="border_width_map_unit_scale" type="QString"/>
             <Option value="255,158,23,255" name="color" type="QString"/>
@@ -184,7 +184,7 @@
         <layer class="SimpleFill" locked="0" enabled="1" pass="4">
           <Option type="Map">
             <Option value="3x:0,0,0,0,0,0" name="border_width_map_unit_scale" type="QString"/>
-            <Option value="16,39,241,255" name="color" type="QString"/>
+            <Option value="84,170,241,255" name="color" type="QString"/>
             <Option value="bevel" name="joinstyle" type="QString"/>
             <Option value="0,0" name="offset" type="QString"/>
             <Option value="3x:0,0,0,0,0,0" name="offset_map_unit_scale" type="QString"/>
@@ -246,7 +246,7 @@
         <layer class="SimpleFill" locked="0" enabled="1" pass="1">
           <Option type="Map">
             <Option value="3x:0,0,0,0,0,0" name="border_width_map_unit_scale" type="QString"/>
-            <Option value="157,60,232,255" name="color" type="QString"/>
+            <Option value="8,8,232,255" name="color" type="QString"/>
             <Option value="bevel" name="joinstyle" type="QString"/>
             <Option value="0,0" name="offset" type="QString"/>
             <Option value="3x:0,0,0,0,0,0" name="offset_map_unit_scale" type="QString"/>
