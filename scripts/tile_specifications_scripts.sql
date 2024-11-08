@@ -348,7 +348,6 @@ CREATE OR REPLACE TRIGGER edit_combine_view_trigger
     EXECUTE FUNCTION public.edit_combine_view();
 
 
-
 DROP VIEW IF EXISTS view_tiles;
 CREATE or REPLACE VIEW view_tiles as
 --CONCAT('Tile ',tile,' ', resolution,'m ', datum, ' ', production_branch, '_', utm, hemisphere, ' ', locality) tile_name,
@@ -369,7 +368,8 @@ SELECT tile_id, production_branch, utm, tile, datum, hemisphere, locality, prior
 	bool(sum((NOT(datatype='enc' OR (datatype<>'enc' and exported)))::int)=0) export_complete,
 	bool_or(export_code>0 OR export_code IS NULL) export_errors,
 
-	string_agg(CASE WHEN combine_code>0 THEN CONCAT(combine_warnings_log,'\n') ELSE '' END, '') combine_warnings,
+	string_agg(CASE WHEN combine_code>0 THEN CONCAT(combine_warnings_log,';') ELSE '' END, '') combine_warnings,
+	string_agg(CASE WHEN export_code>0 THEN CONCAT(export_warnings_log,';') ELSE '' END, '') export_warnings,
  	MIN(combine_end_time) age,
 	request_combine, request_export, geometry
 FROM view_individual_combines
@@ -383,7 +383,7 @@ LANGUAGE plpgsql
 AS $function$
    BEGIN
       IF TG_OP = 'UPDATE' THEN
-       UPDATE spec_tiles SET priority=NEW.priority, request_combine=NEW.request_combine, request_export=NEW.request_export WHERE t_id=NEW.t_id;
+       UPDATE spec_tiles SET priority=NEW.priority, request_combine=NEW.request_combine, request_export=NEW.request_export WHERE t_id=NEW.tile_id;
        RETURN NEW;
       -- ELSIF TG_OP = 'DELETE' THEN
       --  DELETE FROM spec_combines WHERE c_id=OLD.c_id;
