@@ -260,7 +260,7 @@ CREATE VIEW view_individual_combines AS
 		(datatype='enc' and (enc_request_time>combine_start_time OR enc_request_time>combine_end_time OR (enc_request_time IS NOT NULL AND (combine_start_time IS NULL OR combine_end_time IS NULL))))) combine_waiting,
 		(TI.export_request_time>R.export_start_time OR TI.export_request_time>R.export_end_time OR (TI.export_request_time IS NOT NULL AND (R.export_start_time IS NULL OR R.export_end_time IS NULL))) export_waiting,
 		(R.export_end_time<B.combine_start_time OR R.export_end_time<B.combine_end_time OR (R.export_end_time IS NULL AND (B.combine_end_time IS NOT NULL))) combined_after_export,
-		(export_end_time>combine_end_time AND export_end_time>combine_start_time AND export_code<=0) exported,
+		(TI.export_request_time<=R.export_start_time AND R.export_start_time<=R.export_end_time AND export_start_time>combine_end_time AND export_end_time>combine_end_time AND export_code<=0) exported,
 		B.combine_start_time, B.combine_end_time,
 		B.combine_code, B.combine_tries, B.combine_data_location, B.combine_warnings_log, B.combine_info_log,
 		R.export_start_time, R.export_end_time,
@@ -349,7 +349,6 @@ CREATE OR REPLACE TRIGGER edit_combine_view_trigger
 
 
 
-
 DROP VIEW IF EXISTS view_tiles;
 CREATE or REPLACE VIEW view_tiles as
 --CONCAT('Tile ',tile,' ', resolution,'m ', datum, ' ', production_branch, '_', utm, hemisphere, ' ', locality) tile_name,
@@ -361,10 +360,12 @@ SELECT tile_id, production_branch, utm, tile, datum, hemisphere, locality, prior
 	bool_or(combine_code>0) combine_errors,
 
 	sum((export_running)::int) exporting,
-	sum((datatype<>'enc' and export_waiting)::int) export_waiting,
 	sum((datatype='enc' and combined_after_export)::int) enc_newer_than_export,
 	sum((datatype<>'enc' and combined_after_export)::int) combine_newer_than_export,
-	sum((datatype='enc' and export_waiting)::int) enc_export_waiting,
+	-- I don't think we need to separate the export waiting based on ENC
+	-- sum((datatype<>'enc' and export_waiting)::int) export_waiting,
+	-- sum((datatype='enc' and export_waiting)::int) enc_export_waiting,
+	sum(export_waiting::int) export_waiting,
 	bool(sum((NOT(datatype='enc' OR (datatype<>'enc' and exported)))::int)=0) export_complete,
 	bool_or(export_code>0 OR export_code IS NULL) export_errors,
 
