@@ -1081,7 +1081,8 @@ class WorldDatabase(VABC):
         for tx, ty in self.db.iterate_filled_tile_indices():
             tile_history = self.db.get_tile_history_by_index(tx, ty)
             fname = tile_history.history.filename_from_index(-1)
-            files.append(str(fname))
+            if os.path.exists(fname):  # if a directory has no tifs then we will get a name of "-00001.tif" which doesn't exist
+                files.append(str(fname))
 
         try:
             if os.path.isfile(vrt_path):
