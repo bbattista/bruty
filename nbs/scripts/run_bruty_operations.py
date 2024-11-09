@@ -110,7 +110,7 @@ def start_process(args, env_path=r'', env_name='', minimized=False, always_exit=
 
 def launch_export(config_path, tile_info, use_caches=False,
            env_path=r'D:\languages\miniconda3\Scripts\activate', env_name='NBS', profile_tile_id=(0, 0),
-           minimized=False, fingerprint="", always_exit=False):
+           minimized=False, fingerprint="", always_exit=False, console_capture=""):
 
     # spawn a new console, activate a python environment and run the combine.py script with appropriate arguments
     # FIXME - hack overriding nbs and bruty paths
@@ -126,6 +126,9 @@ def launch_export(config_path, tile_info, use_caches=False,
     if use_caches:
         args.append("-u")
 
+    # The last argument is the console capture
+    if console_capture:
+        args.append(console_capture)
     # because we are launching separate windows we can't use the subprocess.poll and returncode.
     # maybe we should switch to just logs and not leave a window on the screen for the user to see
     # that would make it easier to check the returncode
@@ -136,7 +139,7 @@ def launch_export(config_path, tile_info, use_caches=False,
 
 def launch_combine(root_path, view_pk_id, config_pth, use_navigation_flag=True, override_epsg=False, extra_debug=False,
            exclude=None, crop=False, env_path=r'', env_name='', minimized=False,
-           fingerprint="", delete_existing=False, always_exit=False):
+           fingerprint="", delete_existing=False, always_exit=False, console_capture=""):
     """
 
     fingerprint is being used to find the processes that are running.
@@ -168,6 +171,9 @@ def launch_combine(root_path, view_pk_id, config_pth, use_navigation_flag=True, 
         args.extend(['-f', fingerprint])
     # args.extend(["-d", conn_info.database, "-r", str(conn_info.port), "-o", conn_info.hostname, "-u", conn_info.username,
     #                      "-p", '"'+conn_info.password+'"'])
+    # The last argument is the console capture
+    if console_capture:
+        args.append(console_capture)
     proc = start_process(args, env_path=env_path, env_name=env_name, minimized=minimized, always_exit=always_exit)
     return proc.pid, script_path
 
@@ -204,7 +210,7 @@ class TileRuns:
     count: int
 
 
-def export_tile(tile_info, config, sql_info):
+def export_tile(tile_info, config, sql_info, console_capture=""):
     use_cached_meta = config.getboolean('USE_CACHED_METADATA', False)
     env_path = config.get('environment_path')
     env_name = config.get('environment_name')
@@ -222,7 +228,8 @@ def export_tile(tile_info, config, sql_info):
 
         pid, script_path = launch_export(config._source_filename, tile_info, use_caches=use_cached_meta,
                                          env_path=env_path, env_name=env_name,
-                                         minimized=minimized, fingerprint=fingerprint, always_exit=always_exit)
+                                         minimized=minimized, fingerprint=fingerprint, always_exit=always_exit,
+                                         console_capture=console_capture)
         running_process = ConsoleProcessTracker(["python", fingerprint, script_path])
         if running_process.console.last_pid != pid:
             LOGGER.warning(f"Process ID mismatch {pid} did not match the found {running_process.console.last_pid}")
@@ -232,7 +239,7 @@ def export_tile(tile_info, config, sql_info):
     return return_process
 
 
-def combine_tile(tile_info, config, conn_info, debug_config=False):
+def combine_tile(tile_info, config, conn_info, debug_config=False, console_capture=""):
     env_path = config.get('environment_path')
     env_name = config.get('environment_name')
     override = config.getboolean('override', False)
@@ -264,7 +271,8 @@ def combine_tile(tile_info, config, conn_info, debug_config=False):
         pid, script_path = launch_combine(root_path, tile_info.pk, config._source_filename, use_navigation_flag=use_nav_flag,
                              override_epsg=override, extra_debug=debug_config, exclude=exclude, crop=(tile_info.datatype == ENC),
                              env_path=env_path, env_name=env_name, minimized=minimized,
-                             fingerprint=fingerprint, delete_existing=delete_existing, always_exit=always_exit)
+                             fingerprint=fingerprint, delete_existing=delete_existing, always_exit=always_exit,
+                             console_capture=console_capture)
         running_process = ConsoleProcessTracker(["python", fingerprint, script_path])
         if running_process.console.last_pid != pid:
             LOGGER.warning(f"Process ID mismatch {pid} did not match the found {running_process.console.last_pid}")
@@ -301,6 +309,7 @@ def main(config):
     ignore_pids = psutil.pids()
     max_processes = config.getint('processes', 5)
     max_tries = config.getint('max_retries', 3)
+    console_capture = config.get("console_capture")
     conn_info = connect_params_from_config(config)
     root, cfg_name = os.path.split(config._source_filename)
     if debug_config:
@@ -380,9 +389,9 @@ def main(config):
 
 
                     if run_combine:
-                        returned_process = combine_tile(tile_info, config, conn_info, debug_config=debug_config)
+                        returned_process = combine_tile(tile_info, config, conn_info, debug_config=debug_config, console_capture=console_capture)
                     elif run_export:
-                        returned_process = export_tile(tile_info, config, tile_manager.sql_obj)
+                        returned_process = export_tile(tile_info, config, tile_manager.sql_obj, console_capture=console_capture)
                     else:
                         returned_process = None
 

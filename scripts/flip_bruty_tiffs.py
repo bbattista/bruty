@@ -78,25 +78,29 @@ def set_bruty_tiffs_orientation(bruty_path, positive_ns=False, just_size=False):
                 sz += pathlib.Path(fname).stat().st_size
                 cnt += 1
                 if not just_size:
-                    ds = gdal.Open(str(data_dir.joinpath(fname.name)), gdal.GA_Update)
-                    x1, resx, dxy, y1, dyx, resy = ds.GetGeoTransform()
-                    if positive_ns and y1 != min_y:
-                        ds.SetGeoTransform((x1, resx, dxy, min_y, dyx, resy))
-                        changed_data = True
-                    if not positive_ns and y1 != max_y:
-                        ds.SetGeoTransform((x1, resx, dxy, max_y, dyx, resy))
-                        changed_data = True
-                    if (resy < 0 and positive_ns) or (resy > 0 and not positive_ns):
-                        for lyr in range(ds.RasterCount):
-                            band = ds.GetRasterBand(lyr + 1)
-                            arr = band.ReadAsArray()
-                            band.WriteArray(numpy.flipud(arr))
-                            del band
-                        ds.SetGeoTransform((x1, resx, dxy, y1 + resy * arr.shape[0], dyx, -resy))
-                        changed_data = True
+                    try:
+                        ds = gdal.Open(str(data_dir.joinpath(fname.name)), gdal.GA_Update)
+                    except Exception as e:
+                        continue
                     else:
-                        pass
-                    del ds
+                        x1, resx, dxy, y1, dyx, resy = ds.GetGeoTransform()
+                        if positive_ns and y1 != min_y:
+                            ds.SetGeoTransform((x1, resx, dxy, min_y, dyx, resy))
+                            changed_data = True
+                        if not positive_ns and y1 != max_y:
+                            ds.SetGeoTransform((x1, resx, dxy, max_y, dyx, resy))
+                            changed_data = True
+                        if (resy < 0 and positive_ns) or (resy > 0 and not positive_ns):
+                            for lyr in range(ds.RasterCount):
+                                band = ds.GetRasterBand(lyr + 1)
+                                arr = band.ReadAsArray()
+                                band.WriteArray(numpy.flipud(arr))
+                                del band
+                            ds.SetGeoTransform((x1, resx, dxy, y1 + resy * arr.shape[0], dyx, -resy))
+                            changed_data = True
+                        else:
+                            pass
+                        del ds
     if False and not just_size and changed_data:
         try:
             db.create_vrt()
