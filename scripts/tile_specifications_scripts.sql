@@ -256,11 +256,11 @@ CREATE VIEW view_individual_combines AS
 		TI.production_branch, TI.utm, TI.hemisphere, TI.tile, TI.datum, TI.locality,
 		R.resolution, R.closing_distance, B.datatype, B.for_navigation,
 		TI.priority,
-		((datatype<>'enc' and (combine_request_time>combine_start_time OR combine_request_time>combine_end_time OR (combine_request_time IS NOT NULL AND (combine_start_time IS NULL OR combine_end_time IS NULL)))) OR
-		(datatype='enc' and (enc_request_time>combine_start_time OR enc_request_time>combine_end_time OR (enc_request_time IS NOT NULL AND (combine_start_time IS NULL OR combine_end_time IS NULL))))) combine_waiting,
+		((B.datatype<>'enc' and (TI.combine_request_time>B.combine_start_time OR TI.combine_request_time>B.combine_end_time OR (TI.combine_request_time IS NOT NULL AND (B.combine_start_time IS NULL OR B.combine_end_time IS NULL)))) OR
+		(B.datatype='enc' and (TI.enc_request_time>B.combine_start_time OR TI.enc_request_time>B.combine_end_time OR (TI.enc_request_time IS NOT NULL AND (B.combine_start_time IS NULL OR B.combine_end_time IS NULL))))) combine_waiting,
 		(TI.export_request_time>R.export_start_time OR TI.export_request_time>R.export_end_time OR (TI.export_request_time IS NOT NULL AND (R.export_start_time IS NULL OR R.export_end_time IS NULL))) export_waiting,
 		(R.export_end_time<B.combine_start_time OR R.export_end_time<B.combine_end_time OR (R.export_end_time IS NULL AND (B.combine_end_time IS NOT NULL))) combined_after_export,
-		(TI.export_request_time<=R.export_start_time AND R.export_start_time<=R.export_end_time AND export_start_time>combine_end_time AND export_end_time>combine_end_time AND export_code<=0) exported,
+		(TI.export_request_time IS NOT NULL AND TI.export_request_time<=R.export_start_time AND R.export_start_time<=R.export_end_time AND R.export_start_time>B.combine_end_time AND R.export_end_time>B.combine_end_time AND R.export_code<=0) exported,
 		B.combine_start_time, B.combine_end_time,
 		B.combine_code, B.combine_tries, B.combine_data_location, B.combine_warnings_log, B.combine_info_log,
 		R.export_start_time, R.export_end_time,
@@ -347,6 +347,7 @@ CREATE OR REPLACE TRIGGER edit_combine_view_trigger
     FOR EACH ROW
     EXECUTE FUNCTION public.edit_combine_view();
 
+        
 
 DROP VIEW IF EXISTS view_tiles;
 CREATE or REPLACE VIEW view_tiles as
@@ -366,7 +367,7 @@ SELECT tile_id, production_branch, utm, tile, datum, hemisphere, locality, prior
 	-- sum((datatype='enc' and export_waiting)::int) enc_export_waiting,
 	sum(export_waiting::int) export_waiting,
 	bool(sum((NOT(datatype='enc' OR (datatype<>'enc' and exported)))::int)=0) export_complete,
-	bool_or(export_code>0 OR export_code IS NULL) export_errors,
+	bool_or(export_code>0 OR (export_code IS NULL AND NOT (export_tries IS NULL OR export_tries <=0))) export_errors,
 
 	string_agg(CASE WHEN combine_code>0 THEN CONCAT(combine_warnings_log,';') ELSE '' END, '') combine_warnings,
 	string_agg(CASE WHEN export_code>0 THEN CONCAT(export_warnings_log,';') ELSE '' END, '') export_warnings,
