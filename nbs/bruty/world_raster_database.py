@@ -1131,7 +1131,7 @@ class WorldDatabase(VABC):
                     rat.SetValueAsString(row_idx, 1, survey_name)
                     rat.SetValueAsInt(row_idx, 2, survey.nbs_id)
                     rat.SetValueAsDouble(row_idx, 3, survey.sorting_metadata[0])
-                contributor_band = vrt.GetRasterBand(LayersEnum.CONTRIBUTOR)
+                contributor_band = vrt.GetRasterBand(LayersEnum.CONTRIBUTOR + 1)  # adjust from zero base numpy arrays to one base gdal driver
                 contributor_band.SetDefaultRAT(rat)
                 vrt = None
 
