@@ -347,7 +347,7 @@ CREATE OR REPLACE TRIGGER edit_combine_view_trigger
     FOR EACH ROW
     EXECUTE FUNCTION public.edit_combine_view();
 
-        
+
 
 DROP VIEW IF EXISTS view_tiles;
 CREATE or REPLACE VIEW view_tiles as
@@ -369,8 +369,9 @@ SELECT tile_id, production_branch, utm, tile, datum, hemisphere, locality, prior
 	bool(sum((NOT(datatype='enc' OR (datatype<>'enc' and exported)))::int)=0) export_complete,
 	bool_or(export_code>0 OR (export_code IS NULL AND NOT (export_tries IS NULL OR export_tries <=0))) export_errors,
 
+	string_agg(CASE WHEN datatype='qualified' AND for_navigation THEN CONCAT(combine_data_location,';') ELSE '' END, '') qualified_data_locations,
 	string_agg(CASE WHEN combine_code>0 THEN CONCAT(combine_warnings_log,';') ELSE '' END, '') combine_warnings,
-	string_agg(CASE WHEN export_code>0 THEN CONCAT(export_warnings_log,';') ELSE '' END, '') export_warnings,
+	string_agg(CASE WHEN export_code>0 and datatype='qualified' and for_navigation THEN CONCAT(export_warnings_log,';') ELSE '' END, '') export_warnings,
  	MIN(combine_end_time) age,
 	request_combine, request_export, geometry
 FROM view_individual_combines
