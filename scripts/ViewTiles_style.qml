@@ -8,7 +8,7 @@
   </flags>
   <renderer-v2 symbollevels="0" type="RuleRenderer" forceraster="0" enableorderby="1" referencescale="-1">
     <rules key="{1b1645df-c77c-4f39-80b6-ae0e58b962e7}">
-      <rule symbol="0" label="Combine Complete" filter="not attribute(@feature, 'combine_errors') AND (attribute(@feature, 'combine_newer_than_export') OR attribute(@feature, 'enc_newer_than_export'))" description="combine_code has a success code -- REMEMBER this has to be a lower symbol level than the Waiting symbology " key="{5b2673e9-21fe-480a-9c9c-4e8be4d35ca1}"/>
+      <rule symbol="0" label="Combine Complete" filter="not attribute(@feature, 'combine_errors') AND attribute(@feature, 'combine_newer_than_export')" description="combine_code has a success code -- REMEMBER this has to be a lower symbol level than the Waiting symbology " key="{5b2673e9-21fe-480a-9c9c-4e8be4d35ca1}"/>
       <rule symbol="1" label="ENCs newer than Export" filter="attribute(@feature, 'export_complete') AND attribute(@feature, 'enc_newer_than_export')" key="{6bc095ea-5f6c-4100-9caa-89fef84283f6}"/>
       <rule symbol="2" label="Combine Failed" filter="attribute(@feature, 'combine_errors')" key="{229e815b-d9f1-42b3-89b5-15800b1f8820}"/>
       <rule symbol="3" label="Combining" filter="attribute(@feature, 'combining') > 0" key="{ab98925e-ce62-4acf-820d-cdd4bfad04fb}"/>
@@ -28,7 +28,7 @@
             <Option value="collection" name="type" type="QString"/>
           </Option>
         </data_defined_properties>
-        <layer class="SimpleFill" locked="0" enabled="1" pass="0">
+        <layer class="SimpleFill" locked="0" enabled="1" pass="3">
           <Option type="Map">
             <Option value="3x:0,0,0,0,0,0" name="border_width_map_unit_scale" type="QString"/>
             <Option value="51,160,44,255" name="color" type="QString"/>
@@ -59,7 +59,7 @@
             <Option value="collection" name="type" type="QString"/>
           </Option>
         </data_defined_properties>
-        <layer class="GradientFill" locked="0" enabled="1" pass="2">
+        <layer class="GradientFill" locked="0" enabled="1" pass="1">
           <Option type="Map">
             <Option value="0" name="angle" type="QString"/>
             <Option value="0,0,255,255" name="color" type="QString"/>
@@ -215,7 +215,7 @@
             <Option value="collection" name="type" type="QString"/>
           </Option>
         </data_defined_properties>
-        <layer class="SimpleFill" locked="0" enabled="1" pass="3">
+        <layer class="SimpleFill" locked="0" enabled="1" pass="2">
           <Option type="Map">
             <Option value="3x:0,0,0,0,0,0" name="border_width_map_unit_scale" type="QString"/>
             <Option value="243,166,178,255" name="color" type="QString"/>
@@ -308,7 +308,7 @@
             <Option value="collection" name="type" type="QString"/>
           </Option>
         </data_defined_properties>
-        <layer class="SimpleFill" locked="0" enabled="1" pass="1">
+        <layer class="SimpleFill" locked="0" enabled="1" pass="0">
           <Option type="Map">
             <Option value="3x:0,0,0,0,0,0" name="border_width_map_unit_scale" type="QString"/>
             <Option value="8,8,232,255" name="color" type="QString"/>
@@ -567,7 +567,7 @@
   <blendMode>0</blendMode>
   <featureBlendMode>0</featureBlendMode>
   <attributeactions>
-    <defaultAction value="{fae17ab6-115a-4fe0-9976-f54397f7d270}" key="Canvas"/>
+    <defaultAction value="{8d165c7f-161b-49d2-b198-6262eab41633}" key="Canvas"/>
     <actionsetting name="Request Combine" type="1" notificationMessage="" shortTitle="Combine" id="{d5ea2536-1039-4645-a609-6b45c0bb948a}" icon="" action="from qgis.utils import iface&#xd;&#xa;from qgis.core import QgsMessageLog&#xd;&#xa;from qgis.PyQt.QtWidgets import QMessageBox&#xd;&#xa;layer = QgsProject().instance().mapLayer(&quot;[%@layer_id%]&quot;)&#xd;&#xa;field = layer.fields().lookupField(&quot;request_combine&quot;)&#xd;&#xa;if bool(&quot;[%$id%]&quot;):&#xd;&#xa;    selected_ids = [[%$id%]]&#xd;&#xa;else:&#xd;&#xa;    selected_ids = [feature.id() for feature in layer.selectedFeatures()]&#xd;&#xa;try:    &#xd;&#xa;    with edit(layer):&#xd;&#xa;        for sid in selected_ids:&#xd;&#xa;            ft = layer.getFeature(sid)&#xd;&#xa;            name = ft.attribute('production_branch')+str(ft.attribute('utm'))+ft.attribute('hemisphere')+'_tile'+str(ft.attribute('tile'))+'_'+ft.attribute('locality')+'_'+ft.attribute('datum')&#xd;&#xa;            show_error = False&#xd;&#xa;            if not ft.attribute(&quot;combining&quot;):&#xd;&#xa;                QgsMessageLog.logMessage(&quot;combine:&quot;+str(sid)+'  '+name)&#xd;&#xa;                try:&#xd;&#xa;                    layer.changeAttributeValue(sid, field, True)&#xd;&#xa;                except:&#xd;&#xa;                    show_error = True&#xd;&#xa;            else:&#xd;&#xa;                show_error = True&#xd;&#xa;            if show_error:&#xd;&#xa;                QgsMessageLog.logMessage(&quot;Can't request new combine until current run ends for:&quot;+str(sid)+'  '+name)&#xd;&#xa;                iface.messageBar().pushWarning(name,&quot; Can't request new combine until current run ends&quot;)&#xd;&#xa;except AssertionError:&#xd;&#xa;    QMessageBox.information(None, &quot;Layer already in edit mode&quot;, &quot;Can't request new combine if the layer is being edited.\nPlease toggle editing.&quot;)&#xd;&#xa;    # iface.messageBar().pushCritical(&quot;Layer already in edit mode&quot;, &quot;Can't request new combine if the layer is being edited&quot;)&#xd;&#xa;except Exception as e:&#xd;&#xa;    QMessageBox.information(None, &quot;Error Requesting Combine&quot;, str(e))&#xd;&#xa;    " isEnabledOnlyWhenEditable="0" capture="0">
       <actionScope id="Layer"/>
       <actionScope id="Canvas"/>
