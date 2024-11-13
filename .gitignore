@@ -18,3 +18,5 @@ docs/_build
 
 New_Directory
 nbs/scripts/logs/
+tests/test_data_output/
+nbs/scripts/barry.gallagher/logs/
