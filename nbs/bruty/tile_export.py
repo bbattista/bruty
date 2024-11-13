@@ -401,181 +401,184 @@ def combine_and_export(config, tile_info, use_caches=False):
                     elif f"{os.getpid()}.log" in h.baseFilename:
                         info_log = f"'{h.baseFilename}'"  # single quotes for postgres
 
-        tile_info.update_table_record(**{tile_info.export.START_TIME: "NOW()", tile_info.export.TRIES: f"COALESCE({tile_info.export.TRIES}, 0) + 1",
+        tile_info.update_table_record(**{tile_info.export.START_TIME: "clock_timestamp()", tile_info.export.TRIES: f"COALESCE({tile_info.export.TRIES}, 0) + 1",
                                          tile_info.export.DATA_LOCATION: f"'{export_dir}'", tile_info.export.INFO_LOG: info_log,
                                          tile_info.export.WARNINGS_LOG: warnings_log})
         # 3) Extract data from all necessary Bruty DBs
         if tile_info.public or tile_info.internal or tile_info.navigation:
-            fobj, cache_file = tempfile.mkstemp(".cache.tif")
-            os.close(fobj)
-            databases = []
+            try:
+                fobj, cache_file = tempfile.mkstemp(".cache.tif")
+                os.close(fobj)
+                databases = []
 
-            # Make an export file for all the databases everything uses (for_nav of qualified/public, enc, gmrt) "original"
-            # Make a copy and add things for navigation (sensitive) and complete the export
-            # Take original and add not_for_nav of the first datasets (qualified/reviewed, enc, gmrt)
-            # Next add unqualified/prereview (both nav and not_for_nav)
-            # Export as bluetopo
-            # Then add sensitive and export as internal
+                # Make an export file for all the databases everything uses (for_nav of qualified/public, enc, gmrt) "original"
+                # Make a copy and add things for navigation (sensitive) and complete the export
+                # Take original and add not_for_nav of the first datasets (qualified/reviewed, enc, gmrt)
+                # Next add unqualified/prereview (both nav and not_for_nav)
+                # Export as bluetopo
+                # Then add sensitive and export as internal
 
-            # @todo if there is no sensitive then internal and bluetopo are the same (don't export twice)
+                # @todo if there is no sensitive then internal and bluetopo are the same (don't export twice)
 
-            # Find the latest data time available so we can tell if an existing export was recent enough
-            dataset, dataset_score = None, None
-            all_times = []
-            root_dir = pathlib.Path(bruty_dir)
-            for combine_tile in combine_tiles:
-                try:
-                    db = WorldDatabase.open(combine_tile.combine.data_location)
-                except FileNotFoundError as e:
-                    LOGGER.warning(f"Bruty data not found:\n  {combine_tile} at {combine_tile.data_location}")
+                # Find the latest data time available so we can tell if an existing export was recent enough
+                dataset, dataset_score = None, None
+                all_times = []
+                root_dir = pathlib.Path(bruty_dir)
+                for combine_tile in combine_tiles:
+                    try:
+                        db = WorldDatabase.open(combine_tile.combine.data_location)
+                    except FileNotFoundError as e:
+                        LOGGER.warning(f"Bruty data not found:\n  {combine_tile} at {combine_tile.data_location}")
+                    else:
+                        if dataset is None:
+                            dataset, dataset_score = setup_export_raster(cache_file, tile_info, db)
+                        all_times.extend([rec.ttime for rec in db.transaction_groups.values() if rec.modified_data])
+                        del db
+                if not dataset:
+                    raise FileNotFoundError(f"No bruty data was found under{root_dir}")
+
+                time_format = "%Y%m%d_%H%M%S"
+                if all_times:
+                    last_time = max(all_times)
+                    timestamp = last_time.strftime(time_format)
                 else:
-                    if dataset is None:
-                        dataset, dataset_score = setup_export_raster(cache_file, tile_info, db)
-                    all_times.extend([rec.ttime for rec in db.transaction_groups.values() if rec.modified_data])
-                    del db
-            if not dataset:
-                raise FileNotFoundError(f"No bruty data was found under{root_dir}")
+                    timestamp = ""
 
-            time_format = "%Y%m%d_%H%M%S"
-            if all_times:
-                last_time = max(all_times)
-                timestamp = last_time.strftime(time_format)
-            else:
-                timestamp = ""
-
-            # Check the disk and see if all desired exports already exist - if any fail then remake the whole set of requested data
-            find_export = RasterExport(export_dir, tile_info, NAVIGATION, timestamp)
-            current_version = BrutyExportVersion()
-            done = []
-            # Check all files with any export time listed in its name and see if it was made with the current Bruty algorithms
-            for exp, wanted, kwargs in ((NAVIGATION, tile_info.navigation, {'navigation': True}),
-                                        (PUBLIC, tile_info.public, {'public': True}),
-                                        (INTERNAL, tile_info.internal, {'internal': True})):
-                success = False
-                if wanted:
-                    # FIXME - instead of checking the export directory we should check all the export table records for the nav/internal/public=True (as appropriate) and see if the files match the pattern of the name (not the folder so much as nav might be used for all 3 exports)
-                    # note, there should only be one tablename but for completeness we'll allow for multiples
-                    for tablename, recs in zip(conn_info_exports.tablenames, get_tile_records(conn_info_exports, tile_info, select="id,data_location", combine_time=timestamp, **kwargs)):
-                        for rec_id, possible_file in recs:
-                            if os.path.exists(possible_file):
-                                try:
-                                    # If this fails, we don't care - just check remaining files
-                                    stored_version = BrutyExportVersion.from_gdal(possible_file)
-                                except:  # file didn't load or no bruty version info was in it
-                                    pass  # keep looking
-                                else:  # the version info is in the file
-                                    if current_version >= stored_version and os.path.exists(possible_file + find_export.EXTRA_RAT_SUFFIX):
-                                        success = (exp, possible_file, rec_id)
-                                        break
-                else:  # not wanted
-                    continue
-                done.append(success)
-
-            if all(done):
-                LOGGER.info(f"Already exported - {timestamp} data located at:")
-                del dataset, dataset_score  # release the file handle for the score file
-                for exp, loc, exp_rec_id in done:
-                    LOGGER.info(f"  {exp}  --  {loc}")
-                    needed_tiles = set([tile for tile in combine_tiles if (tile.datatype, tile.for_nav) in export_definitions[exp]['datasets']])
-                    unreviewed_notes = make_unreviewed_notes(all_simple_records, tile_info, needed_tiles)
-                    # update the notes fields in case the nbs_reviewed column has changed which wouldn't change the actual data
-                    update_export_record(conn_info_exports, exp_rec_id, notes=unreviewed_notes)
-            else:
-                # re-export in case the previous export didn't finish
-                nav_export = RasterExport(export_dir, tile_info, NAVIGATION, timestamp, export_time)
-                internal_export = RasterExport(export_dir, tile_info, INTERNAL, timestamp, export_time)
-                public_export = RasterExport(export_dir, tile_info, PUBLIC, timestamp, export_time)
-
-                for exp, wanted in ((nav_export, tile_info.navigation), (internal_export, tile_info.internal), (public_export, tile_info.public)):
+                # Check the disk and see if all desired exports already exist - if any fail then remake the whole set of requested data
+                find_export = RasterExport(export_dir, tile_info, NAVIGATION, timestamp)
+                current_version = BrutyExportVersion()
+                done = []
+                # Check all files with any export time listed in its name and see if it was made with the current Bruty algorithms
+                for exp, wanted, kwargs in ((NAVIGATION, tile_info.navigation, {'navigation': True}),
+                                            (PUBLIC, tile_info.public, {'public': True}),
+                                            (INTERNAL, tile_info.internal, {'internal': True})):
+                    success = False
                     if wanted:
-                        exp.cleanup_tempfiles()
-                        exp.cleanup_finalfiles()
-                combines_used = set()
-                needed_tiles = set([tile for tile in combine_tiles if (tile.datatype, tile.for_nav) in export_definitions[NAVIGATION]['datasets']])
-                add_tiles = needed_tiles - combines_used
-                base_cnt = add_databases(add_tiles, dataset, dataset_score, comp)
-                combines_used.update(add_tiles)
+                        # FIXME - instead of checking the export directory we should check all the export table records for the nav/internal/public=True (as appropriate) and see if the files match the pattern of the name (not the folder so much as nav might be used for all 3 exports)
+                        # note, there should only be one tablename but for completeness we'll allow for multiples
+                        for tablename, recs in zip(conn_info_exports.tablenames, get_tile_records(conn_info_exports, tile_info, select="id,data_location", combine_time=timestamp, **kwargs)):
+                            for rec_id, possible_file in recs:
+                                if os.path.exists(possible_file):
+                                    try:
+                                        # If this fails, we don't care - just check remaining files
+                                        stored_version = BrutyExportVersion.from_gdal(possible_file)
+                                    except:  # file didn't load or no bruty version info was in it
+                                        pass  # keep looking
+                                    else:  # the version info is in the file
+                                        if current_version >= stored_version and os.path.exists(possible_file + find_export.EXTRA_RAT_SUFFIX):
+                                            success = (exp, possible_file, rec_id)
+                                            break
+                    else:  # not wanted
+                        continue
+                    done.append(success)
 
-                if tile_info.navigation:
-                    os.makedirs(nav_export.extracted_filename.parent, exist_ok=True)
-                    nav_dataset = copy_dataset(dataset, nav_export.extracted_filename)
-                    nav_score = copy_dataset(dataset_score, nav_export.score_filename)
-                    # databases = [tile_info.bruty_db_name(SENSITIVE, True)]
-                    # databases = [root_dir.joinpath(db_name) for db_name in databases]
-                    # nav_sensitive_cnt = add_databases(databases, nav_dataset, nav_score, comp)
-                    del nav_score, nav_dataset  # closes the files so they can be copied
-                    complete_export(nav_export, all_simple_records, tile_info.closing_dist, tile_info.epsg, decimals=decimals)
-                    unreviewed_notes = make_unreviewed_notes(all_simple_records, tile_info, combines_used)
-                    navigation_id = write_export_record(conn_info_exports, nav_export, navigation=True, notes=unreviewed_notes)
+                if all(done):
+                    LOGGER.info(f"Already exported - {timestamp} data located at:")
+                    del dataset, dataset_score  # release the file handle for the score file
+                    for exp, loc, exp_rec_id in done:
+                        LOGGER.info(f"  {exp}  --  {loc}")
+                        needed_tiles = set([tile for tile in combine_tiles if (tile.datatype, tile.for_nav) in export_definitions[exp]['datasets']])
+                        unreviewed_notes = make_unreviewed_notes(all_simple_records, tile_info, needed_tiles)
+                        # update the notes fields in case the nbs_reviewed column has changed which wouldn't change the actual data
+                        update_export_record(conn_info_exports, exp_rec_id, notes=unreviewed_notes)
+                else:
+                    try:
+                        # re-export in case the previous export didn't finish
+                        nav_export = RasterExport(export_dir, tile_info, NAVIGATION, timestamp, export_time)
+                        internal_export = RasterExport(export_dir, tile_info, INTERNAL, timestamp, export_time)
+                        public_export = RasterExport(export_dir, tile_info, PUBLIC, timestamp, export_time)
 
-                if tile_info.public or tile_info.internal:
-                    # @todo the counts returned by add_databases should allow to tell if any changes were added
-                    #   or possibly the same export would apply to multiple configurations, like public and internal are the same
-                    # add the not for navigation versions that were already added
-                    # also add the prereview (unqualified data)
-                    needed_tiles = set([tile for tile in combine_tiles if (tile.datatype, tile.for_nav) in export_definitions[PUBLIC]['datasets']])
-                    add_tiles = needed_tiles - combines_used
-                    if export_definitions[NAVIGATION]['datasets'] - export_definitions[PUBLIC]['datasets']:
-                        raise ValueError("PUBLIC export must include all NAVIGATION datasets")
-                    # [(REVIEWED, False), (ENC, False), (GMRT, False), (PREREVIEW, True), (PREREVIEW, False)]
-                    prereview_cnt = add_databases(add_tiles, dataset, dataset_score, comp)
-                    combines_used.update(add_tiles)
-
-                    if tile_info.public:
-                        os.makedirs(public_export.extracted_filename.parent, exist_ok=True)
-                        unreviewed_notes = make_unreviewed_notes(all_simple_records, tile_info, combines_used)
-                        if prereview_cnt == 0 and nav_export.cog_filename.exists():
-                            try:
-                                os.symlink(nav_export.cog_filename, public_export.cog_filename)
-                                os.symlink(nav_export.rat_filename, public_export.rat_filename)
-                            except OSError:
-                                LOGGER.warning("Symlinks failed, only the Navigation file will exist, public will not")
-                            update_export_record(conn_info_exports, navigation_id, public=True, notes=unreviewed_notes)
-                            public_id = navigation_id
-                        else:
-                            copy_dataset(dataset, public_export.extracted_filename)
-                            complete_export(public_export, all_simple_records, tile_info.closing_dist, tile_info.epsg, decimals=decimals)
-                            public_id = write_export_record(conn_info_exports, public_export, public=True, notes=unreviewed_notes)
-
-                    if tile_info.internal:
-                        os.makedirs(internal_export.extracted_filename.parent, exist_ok=True)
-                        # internal is the same as public with SENSITIVE added.
-                        needed_tiles = set([tile for tile in combine_tiles if (tile.datatype, tile.for_nav) in export_definitions[INTERNAL]['datasets']])
+                        for exp, wanted in ((nav_export, tile_info.navigation), (internal_export, tile_info.internal), (public_export, tile_info.public)):
+                            if wanted:
+                                exp.cleanup_tempfiles()
+                                exp.cleanup_finalfiles()
+                        combines_used = set()
+                        needed_tiles = set([tile for tile in combine_tiles if (tile.datatype, tile.for_nav) in export_definitions[NAVIGATION]['datasets']])
                         add_tiles = needed_tiles - combines_used
-                        if export_definitions[PUBLIC]['datasets'] - export_definitions[INTERNAL]['datasets']:
-                            raise ValueError("INTERNAL export must include all PUBLIC datasets")
-                        sensitive_cnt = add_databases(add_tiles, dataset, dataset_score, comp)
+                        base_cnt = add_databases(add_tiles, dataset, dataset_score, comp)
                         combines_used.update(add_tiles)
-                        unreviewed_notes = make_unreviewed_notes(all_simple_records, tile_info, combines_used)
-                        if sensitive_cnt == 0 and prereview_cnt == 0 and nav_export.cog_filename.exists():
-                            try:
-                                os.symlink(nav_export.cog_filename, internal_export.cog_filename)
-                                os.symlink(nav_export.rat_filename, internal_export.rat_filename)
-                            except OSError:
-                                LOGGER.warning("Symlinks failed, only the Navigation file will exist, internal will not")
-                            update_export_record(conn_info_exports, navigation_id, internal=True, notes=unreviewed_notes)
-                            internal_id = navigation_id
-                        elif sensitive_cnt == 0 and public_export.cog_filename.exists():
-                            try:
-                                os.symlink(public_export.cog_filename, internal_export.cog_filename)
-                                os.symlink(public_export.rat_filename, internal_export.rat_filename)
-                            except OSError:
-                                LOGGER.warning("Symlinks failed, only the public file will exist, internal will not")
-                            update_export_record(conn_info_exports, public_id, internal=True, notes=unreviewed_notes)
-                            internal_id = public_id
-                        else:
-                            copy_dataset(dataset, internal_export.extracted_filename)
-                            complete_export(internal_export, all_simple_records, tile_info.closing_dist, tile_info.epsg, decimals=decimals)
-                            internal_id = write_export_record(conn_info_exports, internal_export, internal=True, notes=unreviewed_notes)
 
-                for exp, wanted in ((nav_export, tile_info.navigation), (internal_export, tile_info.internal), (public_export, tile_info.public)):
-                    if wanted:
-                        exp.cleanup_tempfiles(allow_permission_fail=True)
-                del dataset, dataset_score  # release the file handle for the score file
-                for fname in (nav_export.cog_filename, internal_export.cog_filename,public_export.cog_filename):
-                    make_read_only(fname)
-            remove_file(cache_file, allow_permission_fail=True, limit=4, tdelay=15)
-            remove_file(cache_file.replace(".tif", ".score.tif"), allow_permission_fail=True, limit=4, tdelay=15)
+                        if tile_info.navigation:
+                            os.makedirs(nav_export.extracted_filename.parent, exist_ok=True)
+                            nav_dataset = copy_dataset(dataset, nav_export.extracted_filename)
+                            nav_score = copy_dataset(dataset_score, nav_export.score_filename)
+                            # databases = [tile_info.bruty_db_name(SENSITIVE, True)]
+                            # databases = [root_dir.joinpath(db_name) for db_name in databases]
+                            # nav_sensitive_cnt = add_databases(databases, nav_dataset, nav_score, comp)
+                            del nav_score, nav_dataset  # closes the files so they can be copied
+                            complete_export(nav_export, all_simple_records, tile_info.closing_dist, tile_info.epsg, decimals=decimals)
+                            unreviewed_notes = make_unreviewed_notes(all_simple_records, tile_info, combines_used)
+                            navigation_id = write_export_record(conn_info_exports, nav_export, navigation=True, notes=unreviewed_notes)
+
+                        if tile_info.public or tile_info.internal:
+                            # @todo the counts returned by add_databases should allow to tell if any changes were added
+                            #   or possibly the same export would apply to multiple configurations, like public and internal are the same
+                            # add the not for navigation versions that were already added
+                            # also add the prereview (unqualified data)
+                            needed_tiles = set([tile for tile in combine_tiles if (tile.datatype, tile.for_nav) in export_definitions[PUBLIC]['datasets']])
+                            add_tiles = needed_tiles - combines_used
+                            if export_definitions[NAVIGATION]['datasets'] - export_definitions[PUBLIC]['datasets']:
+                                raise ValueError("PUBLIC export must include all NAVIGATION datasets")
+                            # [(REVIEWED, False), (ENC, False), (GMRT, False), (PREREVIEW, True), (PREREVIEW, False)]
+                            prereview_cnt = add_databases(add_tiles, dataset, dataset_score, comp)
+                            combines_used.update(add_tiles)
+
+                            if tile_info.public:
+                                os.makedirs(public_export.extracted_filename.parent, exist_ok=True)
+                                unreviewed_notes = make_unreviewed_notes(all_simple_records, tile_info, combines_used)
+                                if prereview_cnt == 0 and nav_export.cog_filename.exists():
+                                    try:
+                                        os.symlink(nav_export.cog_filename, public_export.cog_filename)
+                                        os.symlink(nav_export.rat_filename, public_export.rat_filename)
+                                    except OSError:
+                                        LOGGER.warning("Symlinks failed, only the Navigation file will exist, public will not")
+                                    update_export_record(conn_info_exports, navigation_id, public=True, notes=unreviewed_notes)
+                                    public_id = navigation_id
+                                else:
+                                    copy_dataset(dataset, public_export.extracted_filename)
+                                    complete_export(public_export, all_simple_records, tile_info.closing_dist, tile_info.epsg, decimals=decimals)
+                                    public_id = write_export_record(conn_info_exports, public_export, public=True, notes=unreviewed_notes)
+
+                            if tile_info.internal:
+                                os.makedirs(internal_export.extracted_filename.parent, exist_ok=True)
+                                # internal is the same as public with SENSITIVE added.
+                                needed_tiles = set([tile for tile in combine_tiles if (tile.datatype, tile.for_nav) in export_definitions[INTERNAL]['datasets']])
+                                add_tiles = needed_tiles - combines_used
+                                if export_definitions[PUBLIC]['datasets'] - export_definitions[INTERNAL]['datasets']:
+                                    raise ValueError("INTERNAL export must include all PUBLIC datasets")
+                                sensitive_cnt = add_databases(add_tiles, dataset, dataset_score, comp)
+                                combines_used.update(add_tiles)
+                                unreviewed_notes = make_unreviewed_notes(all_simple_records, tile_info, combines_used)
+                                if sensitive_cnt == 0 and prereview_cnt == 0 and nav_export.cog_filename.exists():
+                                    try:
+                                        os.symlink(nav_export.cog_filename, internal_export.cog_filename)
+                                        os.symlink(nav_export.rat_filename, internal_export.rat_filename)
+                                    except OSError:
+                                        LOGGER.info("Symlinks failed, only the Navigation file will exist, internal will not")
+                                    update_export_record(conn_info_exports, navigation_id, internal=True, notes=unreviewed_notes)
+                                    internal_id = navigation_id
+                                elif sensitive_cnt == 0 and public_export.cog_filename.exists():
+                                    try:
+                                        os.symlink(public_export.cog_filename, internal_export.cog_filename)
+                                        os.symlink(public_export.rat_filename, internal_export.rat_filename)
+                                    except OSError:
+                                        LOGGER.info("Symlinks failed, only the public file will exist, internal will not")
+                                    update_export_record(conn_info_exports, public_id, internal=True, notes=unreviewed_notes)
+                                    internal_id = public_id
+                                else:
+                                    copy_dataset(dataset, internal_export.extracted_filename)
+                                    complete_export(internal_export, all_simple_records, tile_info.closing_dist, tile_info.epsg, decimals=decimals)
+                                    internal_id = write_export_record(conn_info_exports, internal_export, internal=True, notes=unreviewed_notes)
+                    finally:
+                        for exp, wanted in ((nav_export, tile_info.navigation), (internal_export, tile_info.internal), (public_export, tile_info.public)):
+                            if wanted:
+                                exp.cleanup_tempfiles(allow_permission_fail=True)
+                        del dataset, dataset_score  # release the file handle for the score file
+                        for fname in (nav_export.cog_filename, internal_export.cog_filename,public_export.cog_filename):
+                            make_read_only(fname)
+            finally:
+                remove_file(cache_file, allow_permission_fail=True, limit=4, tdelay=15)
+                remove_file(cache_file.replace(".tif", ".score.tif"), allow_permission_fail=True, limit=4, tdelay=15)
     except BaseLockException:
         LOGGER.warning(f"Could not get locks for {tile_info}")
         ret_code = TILE_LOCKED
@@ -587,7 +590,7 @@ def combine_and_export(config, tile_info, use_caches=False):
         LOGGER.error(msg)
         ret_code = UNHANDLED_EXCEPTION
     try:
-        tile_info.update_table_record(**{tile_info.export.END_TIME: "NOW()", tile_info.export.EXIT_CODE: ret_code})
+        tile_info.update_table_record(**{tile_info.export.END_TIME: "clock_timestamp()", tile_info.export.EXIT_CODE: ret_code})
         tile_info.release_lock()
     except:
         pass
