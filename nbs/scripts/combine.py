@@ -669,7 +669,7 @@ def make_parser():
                         help="view id of the tile to process")
     parser.add_argument("-x", "--exclude", action='append', type=int, dest="exclude", default=[],
                         help="nbs_ids to exclude from the combine process")
-    parser.add_argument("-b", "--bruty_path", type=str, metavar='bruty_path', default="",
+    parser.add_argument("-b", "--bruty_root", type=str, metavar='bruty_root', default="",
                         help="root location to store Bruty data (not the full bruy directory, the tile info will determine that)")
     parser.add_argument('--debug', action='store_true', dest='debug',
                         default=False, help="turn on debugging code")
@@ -692,11 +692,11 @@ if __name__ == "__main__":
     LOGGER.info(str(sys.argv))
     parser = make_parser()
     args = parser.parse_args()
-    if args.show_help or not args.bruty_path or not args.combine_pk_id or not args.config_path:
+    if args.show_help or not args.bruty_root or not args.combine_pk_id or not args.config_path:
         parser.print_help()
         ret = NOT_ENOUGH_ARGS
     proc_start = time.time()
-    if args.bruty_path:
+    if args.bruty_root:
         config_obj = read_config(args.config_path, log_files=True, log_prefix=f"_combine_{args.combine_pk_id}", base_log_dirs=None, pid_log_dirs=['logs', 'combines'])
         config = config_obj['DEFAULT']
         conn_info = connect_params_from_config(config)
@@ -704,91 +704,98 @@ if __name__ == "__main__":
         use_locks(None)  # @TODO change all locks to use postgres
         log_level = get_log_level(config)
 
-        if args.debug:
-            setup_call_logger(args.bruty_path)  # in debug mode we want to see all the calls, otherwise this will be a no-op
-            try:
-                shutil.copyfile(pathlib.Path(get_dbg_log_path()).parent.parent.joinpath("wdb_metadata.sqlite"),
-                                pathlib.Path(get_dbg_log_path()+"wdb_metadata.1start.sqlite"))
-            except:
-               pass
-        LOGGER.debug(f"using log level {log_level}")
         try:
             tile_info = CombineTileInfo.get_full_records(conn_info, int(args.combine_pk_id))[0]
-            conn_info.tablenames = [tile_info.metadata_table_name()]
-            tile_info.acquire_lock(conn_info)
-            LOGGER.info(f"Combining {tile_info} for_navigation_flag={(not args.ignore_for_nav, tile_info.for_nav)}")
-            ret = process_nbs_database(args.bruty_path, conn_info, tile_info, use_navigation_flag=not args.ignore_for_nav,
-                                       extra_debug=args.debug, override_epsg=args.override_epsg, exclude=args.exclude, crop=args.crop,
-                                       delete_existing=args.delete_existing, log_level=log_level)
+            full_bruty_path = pathlib.Path(args.bruty_root).joinpath(tile_info.bruty_db_name())
+        except Exception as e:
+            ret = NOT_ENOUGH_ARGS
+            LOGGER.error(traceback.format_exc())
+            LOGGER.error(f"Could not get tile info for -k {args.combine_pk_id}")
+        else:
+            if args.debug:
+                setup_call_logger(full_bruty_path)  # in debug mode we want to see all the calls, otherwise this will be a no-op
+                try:
+                    shutil.copyfile(pathlib.Path(get_dbg_log_path()).parent.parent.joinpath("wdb_metadata.sqlite"),
+                                    pathlib.Path(get_dbg_log_path()+"wdb_metadata.1start.sqlite"))
+                except:
+                   pass
+            LOGGER.debug(f"using log level {log_level}")
+            try:
+                conn_info.tablenames = [tile_info.metadata_table_name()]
+                tile_info.acquire_lock(conn_info)
+                LOGGER.info(f"Combining {tile_info} for_navigation_flag={(not args.ignore_for_nav, tile_info.for_nav)}")
+                ret = process_nbs_database(args.bruty_root, conn_info, tile_info, use_navigation_flag=not args.ignore_for_nav,
+                                           extra_debug=args.debug, override_epsg=args.override_epsg, exclude=args.exclude, crop=args.crop,
+                                           delete_existing=args.delete_existing, log_level=log_level)
+                if args.debug:
+                    try:
+                        shutil.copyfile(pathlib.Path(get_dbg_log_path()).parent.parent.joinpath("wdb_metadata.sqlite"),
+                                        pathlib.Path(get_dbg_log_path() + "wdb_metadata.2postprocess.sqlite"))
+                    except:
+                        pass
+                # if we didn't succeed then let the ret value pass through and don't show a validation since it had an exception, data error or locked data
+                if ret == SUCCEEDED:
+                    # since we succeeded on insert we don't need to check the insert code (which isn't even written til down below)
+                    errors = perform_qc_checks(tile_info, conn_info, (not args.ignore_for_nav, tile_info.for_nav), repair=True, check_last_insert=False)
+                    if any(errors):
+                        LOGGER.error(f"Validation Failed with errors:{errors}")
+                        ret = FAILED_VALIDATION
+                        import smtplib
+                        from email.message import EmailMessage
+
+                        msg = EmailMessage()
+                        msg['Subject'] = rf"Validation Error found {full_bruty_path}"
+                        msg['From'] = "barry.gallagher@noaa.gov"
+                        msg['To'] = "barry.gallagher@noaa.gov,barry.gallagher@gmail.com"
+                        msg.set_content(f"{full_bruty_path}\n{errors}")
+
+                        server = smtplib.SMTP('smtp.google.com', port=25)
+                        server.set_debuglevel(1)
+                        server.send_message(msg)
+                        server.quit()
+                    # until we find the combine bug we'll make the VRT after the validation
+                    db = WorldDatabase.open(tile_info.combine.data_location)
+                    db.create_vrt()
+            except BaseLockException as e:
+                ret = TILE_LOCKED
+            except Exception as e:
+                traceback.print_exc()
+                msg = f"{full_bruty_path} use_navigation_flag={not args.ignore_for_nav} had an unhandled exception - see message above"
+                print(msg)
+                c = LOGGER
+                while c:
+                    for hdlr in c.handlers:
+                        print(hdlr)
+                    c = c.parent
+                LOGGER.error(traceback.format_exc())
+                LOGGER.error(msg)
+                ret = UNHANDLED_EXCEPTION
+            finally:
+                try:
+                    tile_info.release_lock()
+                except:
+                    pass
+
+            # don't bother writing the completion code if the row was locked - it should just get called again
+            if args.fingerprint and ret != TILE_LOCKED:
+                try:
+                    db = WorldDatabase.open(full_bruty_path)
+                    d = db.completion_codes.data_class()
+                    d.ttime = datetime.now()
+                    d.ttype = "INSERT"
+                    d.code = ret
+                    d.fingerprint = args.fingerprint
+                    db.completion_codes[args.fingerprint] = d
+                except:
+                    pass
+
+
             if args.debug:
                 try:
                     shutil.copyfile(pathlib.Path(get_dbg_log_path()).parent.parent.joinpath("wdb_metadata.sqlite"),
-                                    pathlib.Path(get_dbg_log_path() + "wdb_metadata.2postprocess.sqlite"))
+                                    pathlib.Path(get_dbg_log_path()+"wdb_metadata.3end.sqlite"))
                 except:
                     pass
-            # if we didn't succeed then let the ret value pass through and don't show a validation since it had an exception, data error or locked data
-            if ret == SUCCEEDED:
-                # since we succeeded on insert we don't need to check the insert code (which isn't even written til down below)
-                errors = perform_qc_checks(tile_info, conn_info, (not args.ignore_for_nav, tile_info.for_nav), repair=True, check_last_insert=False)
-                if any(errors):
-                    LOGGER.error(f"Validation Failed with errors:{errors}")
-                    ret = FAILED_VALIDATION
-                    import smtplib
-                    from email.message import EmailMessage
 
-                    msg = EmailMessage()
-                    msg['Subject'] = rf"Validation Error found {args.bruty_path}"
-                    msg['From'] = "barry.gallagher@noaa.gov"
-                    msg['To'] = "barry.gallagher@noaa.gov,barry.gallagher@gmail.com"
-                    msg.set_content(f"{args.bruty_path}\n{errors}")
-
-                    server = smtplib.SMTP('smtp.google.com', port=25)
-                    server.set_debuglevel(1)
-                    server.send_message(msg)
-                    server.quit()
-                # until we find the combine bug we'll make the VRT after the validation
-                db = WorldDatabase.open(tile_info.combine.data_location)
-                db.create_vrt()
-        except BaseLockException as e:
-            ret = TILE_LOCKED
-        except Exception as e:
-            traceback.print_exc()
-            msg = f"{args.bruty_path} use_navigation_flag={not args.ignore_for_nav} had an unhandled exception - see message above"
-            print(msg)
-            c = LOGGER
-            while c:
-                for hdlr in c.handlers:
-                    print(hdlr)
-                c = c.parent
-            LOGGER.error(traceback.format_exc())
-            LOGGER.error(msg)
-            ret = UNHANDLED_EXCEPTION
-        finally:
-            try:
-                tile_info.release_lock()
-            except:
-                pass
-
-        # don't bother writing the completion code if the row was locked - it should just get called again
-        if args.fingerprint and ret != TILE_LOCKED:
-            try:
-                db = WorldDatabase.open(args.bruty_path)
-                d = db.completion_codes.data_class()
-                d.ttime = datetime.now()
-                d.ttype = "INSERT"
-                d.code = ret
-                d.fingerprint = args.fingerprint
-                db.completion_codes[args.fingerprint] = d
-            except:
-                pass
-
-
-        if args.debug:
-            try:
-                shutil.copyfile(pathlib.Path(get_dbg_log_path()).parent.parent.joinpath("wdb_metadata.sqlite"),
-                                pathlib.Path(get_dbg_log_path()+"wdb_metadata.3end.sqlite"))
-            except:
-                pass
-
-    LOGGER.debug(f"Exiting {args.bruty_path} with code {ret} after {int(time.time()-proc_start)} seconds")
+            LOGGER.debug(f"Exiting {full_bruty_path} with code {ret} after {int(time.time()-proc_start)} seconds")
     sys.exit(ret)
