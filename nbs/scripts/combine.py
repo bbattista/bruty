@@ -482,6 +482,12 @@ def process_nbs_records(world_db, names_list, sort_dict, comp, transform_metadat
         return ret
     except Exception as e:
         db.db.LOGGER.error(traceback.format_exc())
+        try:
+            db.db.LOGGER.error(f"survey path for error above-- {survey.data_path}")
+            LOGGER.error(traceback.format_exc())
+            LOGGER.error(f"survey path for error above-- {survey.data_path}")
+        except:
+            pass
         raise e
 
 
