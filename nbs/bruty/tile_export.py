@@ -645,15 +645,14 @@ def setup_export_raster(filename, tile_info, db):
         maxy = max(cy)
     wkt = make_mllw_height_wkt(db.db.tile_scheme.epsg)
     res = tile_info.resolution  # tile_record[resolution_index]
-    closing_dist = tile_info.closing_dist
     # center the output cells at origin of UTM like Coast Survey standard -- this will align with Coast Survey Bruty tiles
     # basically a cell center would fall at 0,0 of the coordinate system
-    use_minx = ((minx - closing_dist) // res) * res - res / 2.0
-    use_miny = ((miny - closing_dist) // res) * res - res / 2.0
+    use_minx = ((minx) // res) * res - res / 2.0
+    use_miny = ((miny) // res) * res - res / 2.0
     # don't use edge alignment as we want the centers to line up.
     # @todo change make_export_rasters align parameter to support none/center/edge (currently matches edge alignment)
     dataset, dataset_score = db.make_export_rasters(filename, use_minx, use_miny,
-                                                    maxx + closing_dist, maxy + closing_dist, res, align=None)
+                                                    maxx, maxy, res, align=None)
     dataset.SetProjection(wkt)
     return dataset, dataset_score
 
