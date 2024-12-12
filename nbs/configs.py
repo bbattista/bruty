@@ -218,8 +218,10 @@ def iter_configs(config_filenames: Union[list, str, os.PathLike], log_files: boo
         if user_dir.exists():
             user_directory_exists = True
             use_configs = user_dir
-        config_filenames = use_configs.glob('*.config')
+        print("checking for config files at:", str(use_configs))
+        config_filenames = list(use_configs.glob('*.config'))
     # remove the default names from the list of files to process
+    print("found candidate config files, about to filter:", config_filenames)
     config_filenames = [pathlib.Path(p) for p in config_filenames]
     for config_filename in filter(lambda fname: fname.name != default_config_name, config_filenames):
         config_path, just_cfg_filename = config_filename.parent, config_filename.name

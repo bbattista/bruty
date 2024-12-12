@@ -149,21 +149,23 @@ def start_integer(table_name):
         product_branch_offset = (ord(m.group('pb').lower()) - ord('a')) * 1e6
         datum = m.group('datum').lower()
         dtype = m.group('type').lower()
-        if datum == "mllw" and dtype == "qualified":
+        primary_datums = ("mllw", 'ncd', 'igld85lwd')
+        secondary_datums = ('hrd', 'mld', 'lwrp')
+        if datum in primary_datums and dtype == "qualified":
             type_offset = 0
-        elif datum == "mllw" and dtype == "sensitive":
+        elif datum in primary_datums and dtype == "sensitive":
             type_offset = 200000
-        elif datum == "mllw" and dtype == "unqualified":
+        elif datum in primary_datums and dtype == "unqualified":
             type_offset = 300000
-        elif datum == "mllw" and dtype == "enc":
+        elif datum in primary_datums and dtype == "enc":
             type_offset = 400000
-        elif datum == "mllw" and dtype == "gmrt":
+        elif datum in primary_datums and dtype == "gmrt":
             type_offset = 450000
         elif dtype == "modeling":
             type_offset = 500000
-        elif datum in ('hrd', 'mld', 'lwrp') and dtype == "qualified":
+        elif datum in secondary_datums and dtype == "qualified":
             type_offset = 600000
-        elif datum in ('hrd', 'mld', 'lwrp') and dtype == "enc":
+        elif datum in secondary_datums and dtype == "enc":
             type_offset = 700000
         else:
             raise ValueError(f"no offset found for {datum}_{dtype}")
